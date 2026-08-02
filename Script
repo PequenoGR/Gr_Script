@@ -1,0 +1,601 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local TweenService = game:GetService("TweenService")
+
+local CONFIG = {
+	INTERVALO = 0.15,
+	TEMPO_APOS_TP = 0.05,
+	VELOCIDADE_EVENTO = 0.5,
+	ALTURA_SEGURA = 2.5,
+}
+
+local farmAtivo = false
+local farmPlotsAtivo = false
+local farmEventoAtivo = false
+local antiAfkAtivo = false
+local autoPortal4xAtivo = false
+local hubName = "UniversalHub"
+
+local portalTools = {
+	"Wooden Portal", "Stone Portal", "Ice Ring", "Crystal Portal",
+	"Runic Gateway", "Scarlet Whirlelpool", "Galactic Wormhole", 
+	"The Void", "Futuristic Portal", "Kraken Portal", 
+	"Sun Portal", "Galaxy Porta"
+}
+
+local areasDeFarm = {
+	{Name = "Secreto",    Folder = "Secret",     Entrada = Vector3.new(117.51, 9986.67, -2254.11), Retorno = Vector3.new(-404.86, 9919.92, -2253.52)},
+	{Name = "Divino",     Folder = "Divine",     Entrada = Vector3.new(42.54, 7951.53, -2187.61), Retorno = Vector3.new(-425.06, 8082.36, -2248.1)},
+	{Name = "Celestial",  Folder = "Celestial",  Entrada = Vector3.new(25.55, 5198.68, -1941.17), Retorno = Vector3.new(-367.7, 5236.21, -1891.78)},
+	{Name = "Abisal",     Folder = "Abyssal",    Entrada = Vector3.new(71.5, -1916.19, -2122.58), Retorno = Vector3.new(838.1, -1853.73, -2176.85)},
+	{Name = "Transcende", Folder = "Transcend",  Entrada = Vector3.new(17.75, -6925.6, -2218.05), Retorno = Vector3.new(-829.16, -7017, -1310.33)}
+}
+local areaSelecionada = areasDeFarm[1]
+
+local function getHRP()
+	local char = player.Character or player.CharacterAdded:Wait()
+	return char:WaitForChild("HumanoidRootPart")
+end
+
+local function tp(pos)
+	local hrp = getHRP()
+	if hrp then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = typeof(pos) == "Vector3" and CFrame.new(pos) or pos
+	end
+end
+
+local function fireTouch(part)
+	local hrp = getHRP()
+	if hrp and part then
+		local touch = part:FindFirstChild("TouchInterest")
+		if touch and firetouchinterest then
+			firetouchinterest(hrp, part, 0)
+			task.wait()
+			firetouchinterest(hrp, part, 1)
+			return true
+		end
+	end
+	return false
+end
+
+local function getSpawners(folder)
+	local parts = workspace:FindFirstChild("DropperParts")
+	if parts then
+		local spawners = parts:FindFirstChild("ItemSpawners")
+		if spawners then
+			return spawners:FindFirstChild(folder)
+		end
+	end
+	return nil
+end
+
+if player.PlayerGui:FindFirstChild(hubName) then
+	player.PlayerGui[hubName]:Destroy()
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = hubName
+gui.Parent = player.PlayerGui
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+
+local currentSize = { X = 200, Y = 220 }
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Parent = gui
+mainFrame.Size = UDim2.new(0, currentSize.X, 0, currentSize.Y)
+mainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
+
+local topBar = Instance.new("Frame")
+topBar.Parent = mainFrame
+topBar.Size = UDim2.new(1, 0, 0, 25)
+topBar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+topBar.BorderSizePixel = 0
+
+local title = Instance.new("TextLabel")
+title.Parent = topBar
+title.Size = UDim2.new(1, -60, 1, 0)
+title.Position = UDim2.new(0, 10, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "UNIVERSAL HUB"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 10
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Parent = topBar
+closeBtn.Size = UDim2.new(0, 25, 1, 0)
+closeBtn.Position = UDim2.new(1, -25, 0, 0)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 11
+closeBtn.TextColor3 = Color3.fromRGB(255, 90, 90)
+
+local minBtn = Instance.new("TextButton")
+minBtn.Parent = topBar
+minBtn.Size = UDim2.new(0, 25, 1, 0)
+minBtn.Position = UDim2.new(1, -50, 0, 0)
+minBtn.BackgroundTransparency = 1
+minBtn.Text = "—"
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 13
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+
+local navBar = Instance.new("Frame")
+navBar.Parent = mainFrame
+navBar.Size = UDim2.new(1, 0, 0, 20)
+navBar.Position = UDim2.new(0, 0, 0, 25)
+navBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+navBar.BorderSizePixel = 0
+
+local container = Instance.new("Frame")
+container.Parent = mainFrame
+container.Size = UDim2.new(1, 0, 1, -45)
+container.Position = UDim2.new(0, 0, 0, 45)
+container.BackgroundTransparency = 1
+
+local pages = {}
+
+local function createPage(name)
+	local page = Instance.new("ScrollingFrame")
+	page.Parent = container
+	page.Size = UDim2.new(1, 0, 1, 0)
+	page.CanvasSize = UDim2.new(0, 0, 0, 0)
+	page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	page.ScrollBarThickness = 0
+	page.BackgroundTransparency = 1
+	page.Visible = false
+
+	local layout = Instance.new("UIListLayout")
+	layout.Parent = page
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 8)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	local padding = Instance.new("UIPadding")
+	padding.Parent = page
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.PaddingBottom = UDim.new(0, 10)
+
+	pages[name] = page
+	return page
+end
+
+local mainPage = createPage("Main")
+local playerPage = createPage("Player")
+local configPage = createPage("Config")
+
+local function showPage(name)
+	for i, v in pairs(pages) do v.Visible = (i == name) end
+end
+showPage("Main")
+
+local function addNav(text, page, pos, width)
+	local btn = Instance.new("TextButton")
+	btn.Parent = navBar
+	btn.Size = UDim2.new(width, 0, 1, 0)
+	btn.Position = UDim2.new(pos, 0, 0, 0)
+	btn.BackgroundTransparency = 1
+	btn.Text = text
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 9
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.MouseButton1Click:Connect(function() showPage(page) end)
+end
+
+addNav("MAIN", "Main", 0, 0.33)
+addNav("PLAYER", "Player", 0.33, 0.33)
+addNav("CONFIG", "Config", 0.66, 0.34)
+
+local function createSection(parentPage, titleText)
+	local section = Instance.new("Frame")
+	section.Parent = parentPage
+	section.Size = UDim2.new(0.92, 0, 0, 0)
+	section.AutomaticSize = Enum.AutomaticSize.Y
+	section.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	section.BorderSizePixel = 0
+	Instance.new("UICorner", section).CornerRadius = UDim.new(0, 6)
+
+	local secLayout = Instance.new("UIListLayout")
+	secLayout.Parent = section
+	secLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local headerBtn = Instance.new("TextButton")
+	headerBtn.Parent = section
+	headerBtn.Size = UDim2.new(1, 0, 0, 28)
+	headerBtn.BackgroundTransparency = 1
+	headerBtn.Text = "   " .. titleText
+	headerBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+	headerBtn.Font = Enum.Font.GothamBold
+	headerBtn.TextSize = 10
+	headerBtn.TextXAlignment = Enum.TextXAlignment.Left
+
+	local arrow = Instance.new("TextLabel")
+	arrow.Parent = headerBtn
+	arrow.Size = UDim2.new(0, 20, 0, 20)
+	arrow.AnchorPoint = Vector2.new(1, 0.5)
+	arrow.Position = UDim2.new(1, -5, 0.5, 0)
+	arrow.BackgroundTransparency = 1
+	arrow.Text = "▼"
+	arrow.TextColor3 = Color3.fromRGB(200, 200, 200)
+	arrow.Font = Enum.Font.GothamBold
+	arrow.TextSize = 10
+
+	local separator = Instance.new("Frame")
+	separator.Parent = section
+	separator.Size = UDim2.new(1, 0, 0, 1)
+	separator.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	separator.BorderSizePixel = 0
+
+	local childContainer = Instance.new("Frame")
+	childContainer.Parent = section
+	childContainer.Size = UDim2.new(1, 0, 0, 0)
+	childContainer.AutomaticSize = Enum.AutomaticSize.Y
+	childContainer.BackgroundTransparency = 1
+	childContainer.Visible = true
+	childContainer.ClipsDescendants = true
+
+	local childLayout = Instance.new("UIListLayout")
+	childLayout.Parent = childContainer
+	childLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	childLayout.Padding = UDim.new(0, 6)
+	childLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	local childPadding = Instance.new("UIPadding")
+	childPadding.Parent = childContainer
+	childPadding.PaddingTop = UDim.new(0, 8)
+	childPadding.PaddingBottom = UDim.new(0, 8)
+
+	local opened = true
+	headerBtn.MouseButton1Click:Connect(function()
+		opened = not opened
+		childContainer.Visible = opened
+		separator.Visible = opened
+		TweenService:Create(arrow, TweenInfo.new(0.25), {Rotation = opened and 0 or -90}):Play()
+		TweenService:Create(headerBtn, TweenInfo.new(0.2), {TextColor3 = opened and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)}):Play()
+		TweenService:Create(arrow, TweenInfo.new(0.2), {TextColor3 = opened and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)}):Play()
+	end)
+
+	return childContainer
+end
+
+local function createToggle(parent, text, callback)
+	local frame = Instance.new("Frame")
+	frame.Parent = parent
+	frame.Size = UDim2.new(0.9, 0, 0, 26)
+	frame.BackgroundTransparency = 1
+
+	local label = Instance.new("TextLabel")
+	label.Parent = frame
+	label.Size = UDim2.new(0.7, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 10
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+
+	local bg = Instance.new("Frame")
+	bg.Parent = frame
+	bg.Size = UDim2.new(0, 30, 0, 14)
+	bg.Position = UDim2.new(1, -30, 0.5, -7)
+	bg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
+	local circle = Instance.new("Frame")
+	circle.Parent = bg
+	circle.Size = UDim2.new(0, 10, 0, 10)
+	circle.Position = UDim2.new(0, 2, 0.5, -5)
+	circle.BackgroundColor3 = Color3.new(1, 1, 1)
+	Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+	local btn = Instance.new("TextButton")
+	btn.Parent = bg
+	btn.Size = UDim2.new(1, 0, 1, 0)
+	btn.BackgroundTransparency = 1
+	btn.Text = ""
+
+	local active = false
+	btn.MouseButton1Click:Connect(function()
+		active = not active
+		TweenService:Create(bg, TweenInfo.new(0.2), {
+			BackgroundColor3 = active and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(40, 40, 40)
+		}):Play()
+		TweenService:Create(circle, TweenInfo.new(0.2), {
+			Position = active and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+		}):Play()
+		callback(active)
+	end)
+end
+
+local function createDropdown(parent, text, list, callback)
+	local opened = false
+	local holder = Instance.new("Frame")
+	holder.Parent = parent
+	holder.Size = UDim2.new(0.9, 0, 0, 28)
+	holder.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	holder.ClipsDescendants = true
+	Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 4)
+
+	local top = Instance.new("TextButton")
+	top.Parent = holder
+	top.Size = UDim2.new(1, 0, 0, 28)
+	top.BackgroundTransparency = 1
+	top.Text = "  " .. text .. " : " .. list[1].Name
+	top.TextColor3 = Color3.new(1, 1, 1)
+	top.Font = Enum.Font.GothamBold
+	top.TextSize = 10
+	top.TextXAlignment = Enum.TextXAlignment.Left
+
+	local layout = Instance.new("UIListLayout")
+	layout.Parent = holder
+	layout.Padding = UDim.new(0, 2)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	top.MouseButton1Click:Connect(function()
+		opened = not opened
+		TweenService:Create(holder, TweenInfo.new(0.25), {
+			Size = opened and UDim2.new(0.9, 0, 0, 28 + (#list * 26)) or UDim2.new(0.9, 0, 0, 28)
+		}):Play()
+	end)
+
+	for _, info in pairs(list) do
+		local opt = Instance.new("TextButton")
+		opt.Parent = holder
+		opt.Size = UDim2.new(0.95, 0, 0, 24)
+		opt.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+		opt.Text = info.Name
+		opt.TextColor3 = Color3.new(1, 1, 1)
+		opt.Font = Enum.Font.Gotham
+		opt.TextSize = 9
+		Instance.new("UICorner", opt).CornerRadius = UDim.new(0, 4)
+
+		opt.MouseButton1Click:Connect(function()
+			callback(info)
+			top.Text = "  " .. text .. " : " .. info.Name
+			opened = false
+			TweenService:Create(holder, TweenInfo.new(0.25), {Size = UDim2.new(0.9, 0, 0, 28)}):Play()
+		end)
+	end
+end
+
+local farmSection = createSection(mainPage, "FARMING")
+createToggle(farmSection, "Auto Farm (Áreas)", function(v) farmAtivo = v end)
+createDropdown(farmSection, "Área", areasDeFarm, function(info) areaSelecionada = info end)
+createToggle(farmSection, "Farm Plots (Seu terreno)", function(v) farmPlotsAtivo = v end)
+createToggle(farmSection, "Auto Portal 4x", function(v) autoPortal4xAtivo = v end)
+
+local eventSection = createSection(mainPage, "EVENTO")
+createToggle(eventSection, "Farm Evento (AdminCoin)", function(v) farmEventoAtivo = v end)
+
+local configSection = createSection(configPage, "GERAL")
+createToggle(configSection, "Anti-AFK", function(v) antiAfkAtivo = v end)
+
+createDropdown(configSection, "Tamanho", {
+	{Name = "Pequeno", X = 180, Y = 170},
+	{Name = "Médio", X = 200, Y = 220},
+	{Name = "Grande", X = 280, Y = 300}
+}, function(info)
+	currentSize.X = info.X
+	currentSize.Y = info.Y
+	TweenService:Create(mainFrame, TweenInfo.new(0.25), {Size = UDim2.new(0, info.X, 0, info.Y)}):Play()
+end)
+
+local themeSection = createSection(configPage, "TEMAS")
+local themeContainer = Instance.new("Frame")
+themeContainer.Parent = themeSection
+themeContainer.Size = UDim2.new(0.9, 0, 0, 25)
+themeContainer.BackgroundTransparency = 1
+
+local themeLayout = Instance.new("UIListLayout")
+themeLayout.Parent = themeContainer
+themeLayout.FillDirection = Enum.FillDirection.Horizontal
+themeLayout.Padding = UDim.new(0, 10)
+themeLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function createColor(parent, color, callback)
+	local btn = Instance.new("TextButton")
+	btn.Parent = parent
+	btn.Size = UDim2.new(0, 22, 0, 22)
+	btn.BackgroundColor3 = color
+	btn.Text = ""
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+	btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+createColor(themeContainer, Color3.fromRGB(15, 15, 15), function()
+	mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+	topBar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	navBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+end)
+
+createColor(themeContainer, Color3.fromRGB(120, 0, 255), function()
+	mainFrame.BackgroundColor3 = Color3.fromRGB(30, 10, 60)
+	topBar.BackgroundColor3 = Color3.fromRGB(70, 0, 120)
+	navBar.BackgroundColor3 = Color3.fromRGB(45, 0, 80)
+end)
+
+createColor(themeContainer, Color3.fromRGB(255, 215, 0), function()
+	mainFrame.BackgroundColor3 = Color3.fromRGB(40, 30, 0)
+	topBar.BackgroundColor3 = Color3.fromRGB(100, 80, 0)
+	navBar.BackgroundColor3 = Color3.fromRGB(70, 55, 0)
+end)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	container.Visible = not minimized
+	navBar.Visible = not minimized
+	TweenService:Create(mainFrame, TweenInfo.new(0.25), {
+		Size = minimized and UDim2.new(0, currentSize.X, 0, 25) or UDim2.new(0, currentSize.X, 0, currentSize.Y)
+	}):Play()
+end)
+
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- ============================================
+-- AUTO PORTAL 4x
+-- ============================================
+task.spawn(function()
+	while task.wait(0.1) do
+		if not autoPortal4xAtivo then continue end
+		local char = player.Character
+		if not char then continue end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum then continue end
+		local portal = nil
+		for _, name in ipairs(portalTools) do
+			portal = player.Backpack:FindFirstChild(name) or char:FindFirstChild(name)
+			if portal then break end
+		end
+		if portal and portal.Parent ~= char then
+			hum:EquipTool(portal)
+		end
+		local popup = player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("GUI") and player.PlayerGui.GUI:FindFirstChild("HUD") and player.PlayerGui.GUI.HUD:FindFirstChild("PortalPopup")
+		if popup then
+			local btn = popup:FindFirstChild("Portal4xButton")
+			if btn and (btn.Visible or popup.Visible) then
+				pcall(function()
+					if fireclickdetector then fireclickdetector(btn) end
+					if firesignal then firesignal(btn.MouseButton1Click) end
+					btn:Fire()
+					btn:Click()
+				end)
+			end
+		end
+	end
+end)
+
+-- ============================================
+-- FARM DE ÁREAS - SIMPLES E RÁPIDO
+-- ============================================
+task.spawn(function()
+	while task.wait(CONFIG.INTERVALO) do
+		if not farmAtivo then continue end
+		local spawners = getSpawners(areaSelecionada.Folder)
+		if spawners and #spawners:GetChildren() > 0 then
+			local pegou = false
+			for _, model in spawners:GetChildren() do
+				if not farmAtivo or pegou then break end
+				local part = model:FindFirstChild("HumanoidRootPart", true)
+				if part then
+					local prompt = part:FindFirstChildWhichIsA("ProximityPrompt", true)
+					if prompt then
+						tp(part.CFrame + Vector3.new(0, 2, 0))
+						task.wait(CONFIG.TEMPO_APOS_TP)
+						if fireproximityprompt then
+							fireproximityprompt(prompt)
+						else
+							prompt:InputHoldBegin()
+							task.wait(0.03)
+							prompt:InputHoldEnd()
+						end
+						pegou = true
+						task.wait(0.02)
+					end
+				end
+			end
+			if pegou then
+				tp(areaSelecionada.Retorno)
+				task.wait(CONFIG.TEMPO_APOS_TP)
+			end
+		else
+			tp(areaSelecionada.Entrada)
+			task.wait(CONFIG.TEMPO_APOS_TP)
+		end
+	end
+end)
+
+-- ============================================
+-- FARM DE PLOTS
+-- ============================================
+task.spawn(function()
+	while task.wait(CONFIG.INTERVALO) do
+		if not farmPlotsAtivo then continue end
+		local plot = workspace:FindFirstChild("Plot_" .. player.Name)
+		if plot and plot:IsA("Model") then
+			for floorNum = 1, 3 do
+				local floor = plot:FindFirstChild("Floor"..floorNum)
+				if floor then
+					local slots = floor:FindFirstChild("Slots")
+					if slots then
+						for slotNum = 1, 10 do
+							if not farmPlotsAtivo then break end
+							local slot = slots:FindFirstChild("Slot"..slotNum)
+							if slot then
+								local temPlanta = false
+								for _, child in slot:GetChildren() do
+									if string.match(child.Name, "Base") then
+										temPlanta = true
+										break
+									end
+								end
+								if temPlanta then
+									local touch = slot:FindFirstChild("CollectTouch")
+									if touch and touch:IsA("BasePart") then
+										fireTouch(touch)
+										task.wait(0.02)
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		else
+			task.wait(0.3)
+		end
+	end
+end)
+
+-- ============================================
+-- FARM DE EVENTO (AdminCoin)
+-- ============================================
+task.spawn(function()
+	while task.wait(CONFIG.INTERVALO) do
+		if not farmEventoAtivo then continue end
+		local hrp = getHRP()
+		if not hrp then
+			task.wait(0.3)
+			continue
+		end
+		local target = hrp.Position + Vector3.new(0, CONFIG.ALTURA_SEGURA, 0)
+		local encontrou = false
+		for _, obj in workspace:GetChildren() do
+			if obj.Name == "AdminCoin" and obj:IsA("Model") then
+				encontrou = true
+				if not obj.PrimaryPart then
+					for _, p in obj:GetDescendants() do
+						if p:IsA("BasePart") then
+							obj.PrimaryPart = p
+							break
+						end
+					end
+				end
+				if obj.PrimaryPart then
+					local pos = obj:GetPivot().Position
+					if (pos - target).Magnitude > 3 then
+						obj:PivotTo(CFrame.new(pos:Lerp(target, CONFIG.VELOCIDADE_EVENTO)) * obj:GetPivot().Rotation)
+					end
+					fireTouch(obj.PrimaryPart)
+					task.wait(0.02)
+				end
+			end
+		end
+		if not encontrou then
+			task.wait(0.3)
+		end
+	end
+end)
