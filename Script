@@ -14,7 +14,7 @@ local farmPlotsAtivo = false
 local farmEventoAtivo = false
 local antiAfkAtivo = false
 local autoPortal4xAtivo = false
-local hubName = "UniversalHub"
+local hubName = "Gr_HUB"
 
 local portalTools = {
 	"Wooden Portal", "Stone Portal", "Ice Ring", "Crystal Portal",
@@ -109,7 +109,7 @@ title.Parent = topBar
 title.Size = UDim2.new(1, -60, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "UNIVERSAL HUB"
+title.Text = "Gr_HUB"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 10
 title.TextColor3 = Color3.new(1, 1, 1)
@@ -375,16 +375,16 @@ local function createDropdown(parent, text, list, callback)
 end
 
 local farmSection = createSection(mainPage, "FARMING")
-createToggle(farmSection, "Auto Farm (Áreas)", function(v) farmAtivo = v end)
+createToggle(farmSection, "Auto Brainrot (Áreas)", function(v) farmAtivo = v end)
 createDropdown(farmSection, "Área", areasDeFarm, function(info) areaSelecionada = info end)
-createToggle(farmSection, "Farm Plots (Seu terreno)", function(v) farmPlotsAtivo = v end)
-createToggle(farmSection, "Auto Portal 4x", function(v) autoPortal4xAtivo = v end)
+createToggle(farmSection, "Auto Money (Seu terreno)", function(v) farmPlotsAtivo = v end)
+createToggle(farmSection, "Auto Treino", function(v) autoPortal4xAtivo = v end)
 
 local eventSection = createSection(mainPage, "EVENTO")
 createToggle(eventSection, "Farm Evento (AdminCoin)", function(v) farmEventoAtivo = v end)
 
 local configSection = createSection(configPage, "GERAL")
-createToggle(configSection, "Anti-AFK", function(v) antiAfkAtivo = v end)
+createToggle(configSection, "GR o Brabo", function(v) antiAfkAtivo = v end)
 
 createDropdown(configSection, "Tamanho", {
 	{Name = "Pequeno", X = 180, Y = 170},
