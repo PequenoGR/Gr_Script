@@ -3,9 +3,9 @@ local player = Players.LocalPlayer
 local TweenService = game:GetService("TweenService")
 
 local CONFIG = {
-	INTERVALO = 0.15,
-	TEMPO_APOS_TP = 0.2,
-	VELOCIDADE_EVENTO = 0.5,
+	INTERVALO = 0.2,
+	TEMPO_APOS_TP = 0.3,
+	VELOCIDADE_EVENTO = 0.6,
 	ALTURA_SEGURA = 2.5,
 }
 
@@ -28,7 +28,7 @@ local areasDeFarm = {
 	{Name = "Divino",     Folder = "Divine",     Entrada = Vector3.new(42.54, 7951.53, -2187.61), Retorno = Vector3.new(-425.06, 8082.36, -2248.1)},
 	{Name = "Celestial",  Folder = "Celestial",  Entrada = Vector3.new(25.55, 5198.68, -1941.17), Retorno = Vector3.new(-367.7, 5236.21, -1891.78)},
 	{Name = "Abisal",     Folder = "Abyssal",    Entrada = Vector3.new(71.5, -1916.19, -2122.58), Retorno = Vector3.new(838.1, -1853.73, -2176.85)},
-	{Name = "Transcende", Folder = "Transcend",  Entrada = Vector3.new(17.75, -6925.6, -2218.05), Retorno = Vector3.new(-829.16, -7017, -1310.33)}
+	{Nam = "Transcende", Folder = "Transcend",  Entrada = Vector3.new(17.75, -6925.6, -2218.05), Retorno = Vector3.new(-829.16, -7017, -1310.33)}
 }
 local areaSelecionada = areasDeFarm[1]
 
