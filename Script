@@ -28,7 +28,7 @@ local areasDeFarm = {
 	{Name = "Divino",     Folder = "Divine",     Entrada = Vector3.new(42.54, 7951.53, -2187.61), Retorno = Vector3.new(-425.06, 8082.36, -2248.1)},
 	{Name = "Celestial",  Folder = "Celestial",  Entrada = Vector3.new(25.55, 5198.68, -1941.17), Retorno = Vector3.new(-367.7, 5236.21, -1891.78)},
 	{Name = "Abisal",     Folder = "Abyssal",    Entrada = Vector3.new(71.5, -1916.19, -2122.58), Retorno = Vector3.new(838.1, -1853.73, -2176.85)},
-	{Nam = "Transcende", Folder = "Transcend",  Entrada = Vector3.new(17.75, -6925.6, -2218.05), Retorno = Vector3.new(-829.16, -7017, -1310.33)}
+	{Name = "Transcende", Folder = "Transcend",  Entrada = Vector3.new(17.75, -6925.6, -2218.05), Retorno = Vector3.new(-829.16, -7017, -1310.33)}
 }
 local areaSelecionada = areasDeFarm[1]
 
@@ -50,11 +50,15 @@ local function fireTouch(part)
 	local hrp = getHRP()
 	if hrp and part then
 		local touch = part:FindFirstChild("TouchInterest")
-		if touch and firetouchinterest then
-			firetouchinterest(hrp, part, 0)
-			task.wait()
-			firetouchinterest(hrp, part, 1)
-			return true
+		if touch then
+			local success = pcall(function()
+				if firetouchinterest then
+					firetouchinterest(hrp, part, 0)
+					task.wait()
+					firetouchinterest(hrp, part, 1)
+				end
+			end)
+			return success
 		end
 	end
 	return false
@@ -495,13 +499,15 @@ task.spawn(function()
 					if prompt then
 						tp(part.CFrame + Vector3.new(0, 2, 0))
 						task.wait(CONFIG.TEMPO_APOS_TP)
-						if fireproximityprompt then
-							fireproximityprompt(prompt)
-						else
-							prompt:InputHoldBegin()
-							task.wait(0.03)
-							prompt:InputHoldEnd()
-						end
+						pcall(function()
+							if fireproximityprompt then
+								fireproximityprompt(prompt)
+							else
+								prompt:InputHoldBegin()
+								task.wait(0.03)
+								prompt:InputHoldEnd()
+							end
+						end)
 						pegou = true
 						task.wait(0.02)
 					end
@@ -587,7 +593,9 @@ task.spawn(function()
 				if obj.PrimaryPart then
 					local pos = obj:GetPivot().Position
 					if (pos - target).Magnitude > 3 then
-						obj:PivotTo(CFrame.new(pos:Lerp(target, CONFIG.VELOCIDADE_EVENTO)) * obj:GetPivot().Rotation)
+						pcall(function()
+							obj:PivotTo(CFrame.new(pos:Lerp(target, CONFIG.VELOCIDADE_EVENTO)) * obj:GetPivot().Rotation)
+						end)
 					end
 					fireTouch(obj.PrimaryPart)
 					task.wait(0.02)
