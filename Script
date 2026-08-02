@@ -4,7 +4,7 @@ local TweenService = game:GetService("TweenService")
 
 local CONFIG = {
 	INTERVALO = 0.15,
-	TEMPO_APOS_TP = 0.05,
+	TEMPO_APOS_TP = 0.2,
 	VELOCIDADE_EVENTO = 0.5,
 	ALTURA_SEGURA = 2.5,
 }
