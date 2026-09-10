@@ -1,0 +1,555 @@
+loadstring([[
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+-- Carrega o Backend global
+local GRHub = getgenv().GRHub or _G.GRHub
+if not GRHub then
+    warn("GRHub: As funções principais não foram carregadas antes da UI!")
+    return
+end
+
+local FarmManager = GRHub.FarmManager
+local EventManager = GRHub.EventManager
+local PlayerManager = GRHub.PlayerManager
+local ConfigManager = GRHub.ConfigManager
+local imageAsset = GRHub.ImageAsset
+
+local UIBuilder = {}
+
+UIBuilder.CreateHub = function(hubName)
+	if player.PlayerGui:FindFirstChild(hubName) then
+		player.PlayerGui[hubName]:Destroy()
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = hubName
+	gui.Parent = player.PlayerGui
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	return gui
+end
+
+UIBuilder.CreateMainFrame = function(parent, currentSize)
+	local frame = Instance.new("Frame")
+	frame.Parent = parent
+	frame.Size = UDim2.new(0, currentSize.X, 0, currentSize.Y)
+	frame.Position = UDim2.new(0.5, -currentSize.X/2, 0.5, -currentSize.Y/2)
+	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	frame.BorderSizePixel = 0
+	frame.Active = true
+	frame.Draggable = true
+	frame.ClipsDescendants = true
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+	return frame
+end
+
+UIBuilder.CreateSection = function(parentPage, titleText)
+	local section = Instance.new("Frame")
+	section.Parent = parentPage
+	section.Size = UDim2.new(0.94, 0, 0, 0)
+	section.AutomaticSize = Enum.AutomaticSize.Y
+	section.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
+	section.BorderSizePixel = 0
+	Instance.new("UICorner", section).CornerRadius = UDim.new(0, 6)
+
+	local headerBtn = Instance.new("TextButton")
+	headerBtn.Parent = section
+	headerBtn.Size = UDim2.new(1, 0, 0, 28)
+	headerBtn.BackgroundTransparency = 1
+	headerBtn.Text = "   " .. titleText
+	headerBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+	headerBtn.Font = Enum.Font.FredokaOne
+	headerBtn.TextSize = 12
+	headerBtn.TextXAlignment = Enum.TextXAlignment.Left
+
+	local arrow = Instance.new("TextLabel")
+	arrow.Parent = headerBtn
+	arrow.Size = UDim2.new(0, 20, 0, 20)
+	arrow.AnchorPoint = Vector2.new(1, 0.5)
+	arrow.Position = UDim2.new(1, -5, 0.5, 0)
+	arrow.BackgroundTransparency = 1
+	arrow.Text = "▼"
+	arrow.TextColor3 = Color3.fromRGB(150, 150, 150)
+	arrow.Font = Enum.Font.FredokaOne
+	arrow.TextSize = 10
+
+	local separator = Instance.new("Frame")
+	separator.Parent = section
+	separator.Size = UDim2.new(1, 0, 0, 1)
+	separator.Position = UDim2.new(0, 0, 0, 28)
+	separator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	separator.BorderSizePixel = 0
+
+	local childContainer = Instance.new("Frame")
+	childContainer.Parent = section
+	childContainer.Size = UDim2.new(1, 0, 0, 0)
+	childContainer.Position = UDim2.new(0, 0, 0, 29)
+	childContainer.AutomaticSize = Enum.AutomaticSize.Y
+	childContainer.BackgroundTransparency = 1
+	childContainer.ClipsDescendants = true
+
+	local childLayout = Instance.new("UIListLayout")
+	childLayout.Parent = childContainer
+	childLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	childLayout.Padding = UDim.new(0, 6)
+	childLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	local childPadding = Instance.new("UIPadding")
+	childPadding.Parent = childContainer
+	childPadding.PaddingTop = UDim.new(0, 6)
+	childPadding.PaddingBottom = UDim.new(0, 8)
+
+	local opened = true
+	headerBtn.MouseButton1Click:Connect(function()
+		opened = not opened
+		childContainer.Visible = opened
+		separator.Visible = opened
+		TweenService:Create(arrow, TweenInfo.new(0.2), {Rotation = opened and 0 or -90}):Play()
+	end)
+
+	return childContainer
+end
+
+UIBuilder.CreateButton = function(parent, text, callback)
+	local btn = Instance.new("TextButton")
+	btn.Parent = parent
+	btn.Size = UDim2.new(0.92, 0, 0, 26)
+	btn.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
+	btn.Text = text
+	btn.Font = Enum.Font.FredokaOne
+	btn.TextSize = 12
+	btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+	btn.MouseButton1Click:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+		task.delay(0.1, function()
+			TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(38, 38, 38)}):Play()
+		end)
+		if callback then callback() end
+	end)
+end
+
+UIBuilder.CreateToggle = function(parent, text, callback)
+	local frame = Instance.new("Frame")
+	frame.Parent = parent
+	frame.Size = UDim2.new(0.92, 0, 0, 26)
+	frame.BackgroundTransparency = 1
+
+	local label = Instance.new("TextLabel")
+	label.Parent = frame
+	label.Size = UDim2.new(0.7, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.FredokaOne
+	label.TextSize = 12
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+
+	local bg = Instance.new("Frame")
+	bg.Parent = frame
+	bg.Size = UDim2.new(0, 30, 0, 14)
+	bg.Position = UDim2.new(1, -30, 0.5, -7)
+	bg.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
+	local circle = Instance.new("Frame")
+	circle.Parent = bg
+	circle.Size = UDim2.new(0, 10, 0, 10)
+	circle.Position = UDim2.new(0, 2, 0.5, -5)
+	circle.BackgroundColor3 = Color3.new(1, 1, 1)
+	Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+	local btn = Instance.new("TextButton")
+	btn.Parent = bg
+	btn.Size = UDim2.new(1, 0, 1, 0)
+	btn.BackgroundTransparency = 1
+	btn.Text = ""
+
+	local active = false
+	btn.MouseButton1Click:Connect(function()
+		active = not active
+		TweenService:Create(bg, TweenInfo.new(0.2), {
+			BackgroundColor3 = active and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(45, 45, 45)
+		}):Play()
+		TweenService:Create(circle, TweenInfo.new(0.2), {
+			Position = active and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+		}):Play()
+		if callback then callback(active) end
+	end)
+end
+
+UIBuilder.CreateDropdown = function(parent, text, list, callback)
+	local opened = false
+	local holder = Instance.new("Frame")
+	holder.Parent = parent
+	holder.Size = UDim2.new(0.92, 0, 0, 26)
+	holder.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	holder.ClipsDescendants = true
+	Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 4)
+
+	local top = Instance.new("TextButton")
+	top.Parent = holder
+	top.Size = UDim2.new(1, 0, 0, 26)
+	top.BackgroundTransparency = 1
+	top.Text = "  " .. text .. " : " .. (list[1] and list[1].Name or "")
+	top.TextColor3 = Color3.new(1, 1, 1)
+	top.Font = Enum.Font.FredokaOne
+	top.TextSize = 12
+	top.TextXAlignment = Enum.TextXAlignment.Left
+
+	local layout = Instance.new("UIListLayout")
+	layout.Parent = holder
+	layout.Padding = UDim.new(0, 2)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	top.MouseButton1Click:Connect(function()
+		opened = not opened
+		TweenService:Create(holder, TweenInfo.new(0.25), {
+			Size = opened and UDim2.new(0.92, 0, 0, 26 + (#list * 25)) or UDim2.new(0.92, 0, 0, 26)
+		}):Play()
+	end)
+
+	for _, info in pairs(list) do
+		local opt = Instance.new("TextButton")
+		opt.Parent = holder
+		opt.Size = UDim2.new(0.95, 0, 0, 22)
+		opt.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+		opt.Text = info.Name
+		opt.TextColor3 = Color3.new(1, 1, 1)
+		opt.Font = Enum.Font.FredokaOne
+		opt.TextSize = 11
+		Instance.new("UICorner", opt).CornerRadius = UDim.new(0, 4)
+
+		opt.MouseButton1Click:Connect(function()
+			if callback then callback(info) end
+			top.Text = "  " .. text .. " : " .. info.Name
+			opened = false
+			TweenService:Create(holder, TweenInfo.new(0.25), {Size = UDim2.new(0.92, 0, 0, 26)}):Play()
+		end)
+	end
+end
+
+-- Construção Principal
+local currentSize = { X = 480, Y = 320 }
+local gui = UIBuilder.CreateHub("UniversalHub")
+local mainFrame = UIBuilder.CreateMainFrame(gui, currentSize)
+
+-- Barra Superior
+local topBar = Instance.new("Frame")
+topBar.Parent = mainFrame
+topBar.Size = UDim2.new(1, 0, 0, 30)
+topBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+topBar.BorderSizePixel = 0
+
+local title = Instance.new("TextLabel")
+title.Parent = topBar
+title.Size = UDim2.new(1, -60, 1, 0)
+title.Position = UDim2.new(0, 12, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "GR Hub"
+title.Font = Enum.Font.FredokaOne
+title.TextSize = 18
+title.TextColor3 = Color3.fromRGB(220, 220, 220)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Parent = topBar
+closeBtn.Size = UDim2.new(0, 30, 1, 0)
+closeBtn.Position = UDim2.new(1, -30, 0, 0)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.FredokaOne
+closeBtn.TextSize = 12
+closeBtn.TextColor3 = Color3.fromRGB(200, 70, 70)
+
+local minBtn = Instance.new("TextButton")
+minBtn.Parent = topBar
+minBtn.Size = UDim2.new(0, 30, 1, 0)
+minBtn.Position = UDim2.new(1, -60, 0, 0)
+minBtn.BackgroundTransparency = 1
+minBtn.Text = "—"
+minBtn.Font = Enum.Font.FredokaOne
+minBtn.TextSize = 12
+minBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+
+-- Barra Lateral
+local sidebar = Instance.new("Frame")
+sidebar.Parent = mainFrame
+sidebar.Size = UDim2.new(0, 120, 1, -30)
+sidebar.Position = UDim2.new(0, 0, 0, 30)
+sidebar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+sidebar.BorderSizePixel = 0
+
+local sidebarLayout = Instance.new("UIListLayout")
+sidebarLayout.Parent = sidebar
+sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sidebarLayout.Padding = UDim.new(0, 6)
+
+local sidebarPadding = Instance.new("UIPadding")
+sidebarPadding.Parent = sidebar
+sidebarPadding.PaddingTop = UDim.new(0, 8)
+sidebarPadding.PaddingLeft = UDim.new(0, 6)
+sidebarPadding.PaddingRight = UDim.new(0, 6)
+
+-- Containers
+local container = Instance.new("Frame")
+container.Parent = mainFrame
+container.Size = UDim2.new(1, -120, 1, -30)
+container.Position = UDim2.new(0, 120, 0, 30)
+container.BackgroundTransparency = 1
+
+local pages = {}
+local navButtons = {}
+
+local function createPage(name)
+	local page = Instance.new("ScrollingFrame")
+	page.Parent = container
+	page.Size = UDim2.new(1, 0, 1, 0)
+	page.CanvasSize = UDim2.new(0, 0, 0, 0)
+	page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	page.ScrollBarThickness = 2
+	page.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+	page.BackgroundTransparency = 1
+	page.Visible = false
+
+	local layout = Instance.new("UIListLayout")
+	layout.Parent = page
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 10)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+	local padding = Instance.new("UIPadding")
+	padding.Parent = page
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.PaddingBottom = UDim.new(0, 10)
+
+	pages[name] = page
+	return page
+end
+
+local mainPage = createPage("Main")
+local playerPage = createPage("Player")
+local configPage = createPage("Config")
+
+local function showPage(name)
+	for pageName, pageFrame in pairs(pages) do
+		pageFrame.Visible = (pageName == name)
+	end
+	
+	for pageName, btn in pairs(navButtons) do
+		local active = (pageName == name)
+		
+		TweenService:Create(btn, TweenInfo.new(0.2), {
+			BackgroundColor3 = active and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(15, 15, 15)
+		}):Play()
+		
+		if btn:FindFirstChild("TitleText") then
+			TweenService:Create(btn.TitleText, TweenInfo.new(0.2), {
+				TextColor3 = active and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(160, 160, 160)
+			}):Play()
+		end
+		
+		if btn:FindFirstChild("TabIcon") then
+			TweenService:Create(btn.TabIcon, TweenInfo.new(0.2), {
+				ImageColor3 = active and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(220, 220, 220)
+			}):Play()
+		end
+	end
+end
+
+local function addNavTab(text, pageName, iconUrl)
+	local btn = Instance.new("TextButton")
+	btn.Parent = sidebar
+	btn.Size = UDim2.new(1, 0, 0, 30)
+	btn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+	btn.BorderSizePixel = 0
+	btn.Text = "" 
+	btn.AutoButtonColor = false
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+
+	if iconUrl and iconUrl ~= "" then
+		local icon = Instance.new("ImageLabel")
+		icon.Name = "TabIcon"
+		icon.Parent = btn
+		icon.Size = UDim2.new(0, 17, 0, 17)
+		icon.AnchorPoint = Vector2.new(0, 0.5)
+		icon.Position = UDim2.new(0, 8, 0.5, 0) 
+		icon.BackgroundTransparency = 1
+		icon.Image = iconUrl
+		icon.ImageColor3 = Color3.fromRGB(220, 220, 220)
+	end
+
+	local titleText = Instance.new("TextLabel")
+	titleText.Name = "TitleText"
+	titleText.Parent = btn
+	titleText.Size = UDim2.new(1, -30, 1, 0)
+	titleText.Position = UDim2.new(0, 28, 0, 0) 
+	titleText.BackgroundTransparency = 1
+	titleText.Text = text
+	titleText.Font = Enum.Font.FredokaOne
+	titleText.TextSize = 12
+	titleText.TextColor3 = Color3.fromRGB(160, 160, 160)
+	titleText.TextXAlignment = Enum.TextXAlignment.Left
+	titleText.TextYAlignment = Enum.TextYAlignment.Center
+
+	navButtons[pageName] = btn
+
+	btn.MouseButton1Click:Connect(function()
+		showPage(pageName)
+	end)
+
+	local tabLine = Instance.new("Frame")
+	tabLine.Parent = sidebar
+	tabLine.Size = UDim2.new(1, 0, 0, 1)
+	tabLine.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	tabLine.BorderSizePixel = 0
+end
+
+addNavTab("Main", "Main", "rbxassetid://78780430891192")
+addNavTab("Player", "Player", "rbxassetid://6031763426")
+addNavTab("Config", "Config", "rbxassetid://6031280882")
+
+showPage("Main")
+
+-- Conteúdo Main
+local farmSection = UIBuilder.CreateSection(mainPage, "FARMING")
+UIBuilder.CreateToggle(farmSection, "Auto Farm (Áreas)", FarmManager.ToggleAutoFarmArea)
+UIBuilder.CreateDropdown(farmSection, "Área", {
+	{Name = "Secreto"},
+	{Name = "Divino"},
+	{Name = "Celestial"},
+	{Name = "Abisal"},
+	{Name = "Transcendent"}
+}, function(info)
+	FarmManager.SetArea(info.Name)
+end)
+UIBuilder.CreateToggle(farmSection, "Farm Plots (Seu terreno)", FarmManager.ToggleAutoFarmPlot)
+UIBuilder.CreateToggle(farmSection, "Auto Portal 4x", FarmManager.ToggleAutoPortal)
+
+local eventSection = UIBuilder.CreateSection(mainPage, "EVENTO")
+UIBuilder.CreateToggle(eventSection, "Farm Evento (AdminCoin)", EventManager.ToggleAdminCoin)
+UIBuilder.CreateButton(eventSection, "Coletar Recompensa Rápida", EventManager.ClaimReward)
+
+-- Conteúdo Player
+local playerSection = UIBuilder.CreateSection(playerPage, "ATRIBUTOS")
+UIBuilder.CreateButton(playerSection, "Resetar Personagem", PlayerManager.ResetCharacter)
+
+-- Conteúdo Config
+local configSection = UIBuilder.CreateSection(configPage, "GERAL")
+UIBuilder.CreateToggle(configSection, "Anti-AFK", ConfigManager.ToggleAntiAFK)
+
+UIBuilder.CreateDropdown(configSection, "Tamanho Janela", {
+	{Name = "Pequeno", X = 380, Y = 260},
+	{Name = "Médio", X = 480, Y = 320},
+	{Name = "Grande", X = 560, Y = 380}
+}, function(info)
+	currentSize.X = info.X
+	currentSize.Y = info.Y
+	TweenService:Create(mainFrame, TweenInfo.new(0.25), {
+		Size = UDim2.new(0, info.X, 0, info.Y),
+		Position = UDim2.new(0.5, -info.X/2, 0.5, -info.Y/2)
+	}):Play()
+	container.Size = UDim2.new(1, -120, 1, -30)
+end)
+
+-- Bolinha Minimizar
+local minimizedBall = nil
+local minimized = false
+
+local function createMinimizedBall()
+	if minimizedBall then return end
+	minimizedBall = Instance.new("ImageButton")
+	minimizedBall.Name = "FloatingBall"
+	minimizedBall.Parent = gui
+	minimizedBall.Size = UDim2.new(0, 55, 0, 55)
+	minimizedBall.Position = UDim2.new(0.2, 30, 0, 150)
+	minimizedBall.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	minimizedBall.BorderSizePixel = 0
+	minimizedBall.Image = imageAsset
+	minimizedBall.Visible = false
+	minimizedBall.AutoButtonColor = false
+	minimizedBall.Active = true
+	minimizedBall.Draggable = false
+	Instance.new("UICorner", minimizedBall).CornerRadius = UDim.new(0.2, 0)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(80, 80, 80)
+	stroke.Thickness = 1
+	stroke.Parent = minimizedBall
+
+	local dragging, dragInput, dragStart, startPos
+
+	minimizedBall.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = minimizedBall.Position
+			
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	minimizedBall.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			minimizedBall.Position = UDim2.new(
+				startPos.X.Scale, 
+				startPos.X.Offset + delta.X, 
+				startPos.Y.Scale, 
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+
+	minimizedBall.MouseButton1Click:Connect(function()
+		minimized = false
+		minimizedBall.Visible = false
+		mainFrame.Visible = true
+		sidebar.Visible = true
+		container.Visible = true
+		TweenService:Create(mainFrame, TweenInfo.new(0.25), {
+			Size = UDim2.new(0, currentSize.X, 0, currentSize.Y),
+			Position = UDim2.new(0.5, -currentSize.X/2, 0.5, -currentSize.Y/2)
+		}):Play()
+	end)
+end
+
+minBtn.MouseButton1Click:Connect(function()
+	if minimized then
+		minimized = false
+		if minimizedBall then
+			minimizedBall.Visible = false
+		end
+		mainFrame.Visible = true
+		sidebar.Visible = true
+		container.Visible = true
+		TweenService:Create(mainFrame, TweenInfo.new(0.25), {
+			Size = UDim2.new(0, currentSize.X, 0, currentSize.Y),
+			Position = UDim2.new(0.5, -currentSize.X/2, 0.5, -currentSize.Y/2)
+		}):Play()
+	else
+		minimized = true
+		createMinimizedBall()
+		minimizedBall.Visible = true
+		sidebar.Visible = false
+		container.Visible = false
+		mainFrame.Visible = false
+	end
+end)
+
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+]])()
