@@ -1,0 +1,1897 @@
+local CAMPANHAS = {
+    {minLevel=1,maxLevel=5,questName="Defeat Pirates",ilha="Solmar Island",giver="Solmar Island Quest Giver",title="Defeat Pirates",objetivos={{nome="Cutlass Pirate",total=3},{nome="Flint Pirate",total=2}}},
+    {minLevel=5,maxLevel=10,questName="Defeat Corrupt Marine",ilha="Solmar Island",giver="Solmar Island Quest Giver",title="Defeat Corrupt Marine",objetivos={{nome="Marine Recruit",total=3},{nome="Marine Corporal",total=2}}},
+    {minLevel=10,maxLevel=20,questName="Defeat Werewolfs",ilha="Forbidden Island",giver="Forbidden Island Quest Giver",title="Defeat Werewolfs",objetivos={{nome="Werewolf",total=3},{nome="Fierce Werewolf",total=2}}},
+    {minLevel=20,maxLevel=30,questName="Defeat Prime Werewolfs",ilha="Forbidden Island",giver="Forbidden Island Quest Giver",title="Defeat Prime Werewolfs",objetivos={{nome="Prime Werewolf",total=2},{nome="Werewolf",total=3}}},
+    {minLevel=30,maxLevel=45,questName="Free Old Friends",ilha="Forbidden Island",giver="Forbidden Island Quest Giver",title="Free Old Friends",objetivos={{nome="Corrupted Hunter",total=4},{nome="Corrupted Veteran Hunter",total=1}}},
+    {minLevel=45,maxLevel=55,questName="Defeat Bugg Pirates",ilha="Circus Town",giver="Circus Town Quest Giver",title="Defeat Jester Pirates",objetivos={{nome="Bugg Cutlass Pirate",total=3},{nome="Bugg Flint Pirate",total=2}}},
+    {minLevel=55,maxLevel=65,questName="Defeat Bugg Pirate Leader",ilha="Circus Town",giver="Circus Town Quest Giver",title="Defeat Jester Pirate Leader",objetivos={{nome="Bugg Elite Cutlass Pirate",total=3},{nome="Bugg Musket Pirate",total=2}}},
+    {minLevel=65,maxLevel=80,questName="Defeat The Clowns",ilha="Circus Town",giver="Circus Town Quest Giver",title="Defeat The Clowns",objetivos={{nome="Dual Katana Clown",total=3},{nome="Flint Clown",total=1},{nome="Bomb Clown",total=1}}},
+    {minLevel=80,maxLevel=90,questName="Defeat Desert Outlaws",ilha="Golden Dunes",giver="Golden Dunes Quest Giver",title="Defeat Desert Outlaws",objetivos={{nome="Desert Outlaw",total=5}}},
+    {minLevel=90,maxLevel=100,questName="Defeat Desert Ruffians",ilha="Golden Dunes",giver="Golden Dunes Quest Giver",title="Defeat Desert Ruffians",objetivos={{nome="Desert Ruffian",total=3},{nome="Flint Desert Ruffian",total=2}}},
+    {minLevel=100,maxLevel=115,questName="Defeat Narmers Guard",ilha="Golden Dunes",giver="Golden Dunes Quest Giver",title="Defeat Narmers Guard",objetivos={{nome="Sword Narmers Guard",total=3},{nome="Dual Sword Narmers Guard",total=2}}},
+    {minLevel=115,maxLevel=125,questName="Defeat Ice Vikings",ilha="Frost Island",giver="Frost Island Quest Giver",title="Defeat Ice Vikings",objetivos={{nome="Viking Warrior",total=3},{nome="Old Viking Warrior",total=2}}},
+    {minLevel=125,maxLevel=135,questName="Defeat Cursed Armors",ilha="Frost Island",giver="Frost Island Quest Giver",title="Defeat Cursed Armors",objetivos={{nome="Haunted Knight",total=3},{nome="Doomed Armor",total=2}}},
+    {minLevel=135,maxLevel=145,questName="Defeat Frost-Cursed",ilha="Frost Island",giver="Frost Island Quest Giver",title="Defeat Frost-Cursed",objetivos={{nome="Frozen Viking Warrior",total=3},{nome="Frozen Haunted Knight",total=2}}},
+    {minLevel=145,maxLevel=150,questName="Defeat Boars",ilha="Skull Island",giver="Skull Island Quest Giver",title="Defeat Boars",objetivos={{nome="Boar",total=5}}},
+    {minLevel=150,maxLevel=160,questName="Defeat Sharkmen Patrollers",ilha="Shark Park",giver="Shark Park Quest Giver",title="Defeat Sharkmen Patrollers",objetivos={{nome="Sharkman Patroller",total=3},{nome="Triton Patroller",total=2}}},
+    {minLevel=160,maxLevel=170,questName="Defeat Sharkmen Guards",ilha="Shark Park",giver="Shark Park Quest Giver",title="Defeat Sharkmen Guards",objetivos={{nome="Sharkman Guard",total=3},{nome="Elite Sharkman",total=2}}},
+    {minLevel=170,maxLevel=180,questName="Defeat Sharkmen Apprentice",ilha="Shark Park",giver="Shark Park Quest Giver",title="Defeat Sharkmen Apprentice",objetivos={{nome="Sharkman Fighting Style Student",total=3},{nome="Sharkman Fighting Style Master",total=2}}},
+    {minLevel=180,maxLevel=195,questName="Rustfall Quest 1",ilha="Rustfall",giver="Rustfall Quest Giver",title="Rustfall Quest 1",objetivos={{nome="Tax Collector",total=1},{nome="Shock Trooper",total=3},{nome="Tax Leader",total=1}}},
+    {minLevel=195,maxLevel=210,questName="Rustfall Quest 2",ilha="Rustfall",giver="Rustfall Quest Giver",title="Rustfall Quest 2",objetivos={{nome="Fiscal Officer",total=2},{nome="Underpaid Guard",total=2},{nome="Chief Fiscal Officer",total=1}}},
+    {minLevel=210,maxLevel=230,questName="Rustfall Quest 3",ilha="Rustfall",giver="Rustfall Quest Giver",title="Rustfall Quest 3",objetivos={{nome="Old Iron Sentinel",total=2},{nome="Iron Sentinel",total=2},{nome="Eletric Iron Sentinel",total=1}}},
+    {minLevel=230,maxLevel=240,questName="Defeat Elite Prison Guards",ilha="Prison",giver="Prison Quest Giver",title="Defeat Elite Prison Guards",objetivos={{nome="Elite Prison Guard",total=3},{nome="Elite Prison Supervisor",total=2}}},
+    {minLevel=240,maxLevel=250,questName="Defeat Ice Prison Guards",ilha="Prison",giver="Prison Quest Giver",title="Defeat Ice Prison Guards",objetivos={{nome="Elite Prison Ice Guard",total=3},{nome="Elite Prison Ice Supervisor",total=2}}},
+    {minLevel=250,maxLevel=260,questName="Defeat Lava Prison Guards",ilha="Prison",giver="Prison Quest Giver",title="Defeat Lava Prison Guards",objetivos={{nome="Elite Prison Lava Guard",total=3},{nome="Elite Prison Lava Supervisor",total=2}}},
+    {minLevel=260,maxLevel=270,questName="Valoria Island Quest 1",ilha="Valoria Island",giver="Valoria Island Quest Giver",title="Valoria Island Quest 1",objetivos={{nome="Rookie Sword Gladiator",total=3},{nome="Rookie Gunner Gladiator",total=2}}},
+    {minLevel=270,maxLevel=280,questName="Valoria Island Quest 2",ilha="Valoria Island",giver="Valoria Island Quest Giver",title="Valoria Island Quest 2",objetivos={{nome="Veteran Gladiator",total=2},{nome="Veteran Beast Gladiator",total=3}}},
+    {minLevel=280,maxLevel=290,questName="Valoria Island Quest 3",ilha="Valoria Island",giver="Valoria Island Quest Giver",title="Valoria Island Quest 3",objetivos={{nome="Elite Dual Sword Gladiator",total=3},{nome="Elite Assassin Gladiator",total=2}}},
+    {minLevel=290,maxLevel=300,questName="Windhaven Quest 1",ilha="Windhaven",giver="Windhaven Quest Giver",title="Windhaven Quest 1",objetivos={{nome="Sky Politician",total=3},{nome="Sky Suspicious Merchant",total=2}}},
+    {minLevel=300,maxLevel=310,questName="Windhaven Quest 2",ilha="Windhaven",giver="Windhaven Quest Giver",title="Windhaven Quest 2",objetivos={{nome="Sky Royal Guard",total=2},{nome="Elite Sky Royal Guard",total=2},{nome="Sky Royal Captain",total=1}}},
+    {minLevel=310,maxLevel=325,questName="Windhaven Quest 3",ilha="Windhaven",giver="Windhaven Quest Giver",title="Windhaven Quest 3",objetivos={{nome="Shadow Royal Guard",total=1}}},
+    {minLevel=325,maxLevel=340,questName="Defeat Volcano Guards",ilha="Volcano Island",giver="Volcano Island Quest Giver",title="Defeat Volcano Guards",objetivos={{nome="Volcano Guard",total=3},{nome="Volcano Supervisor",total=2}}},
+    {minLevel=340,maxLevel=355,questName="Defeat Elite Volcano Guards",ilha="Volcano Island",giver="Volcano Island Quest Giver",title="Defeat Elite Volcano Guards",objetivos={{nome="Elite Volcano Guard",total=3},{nome="Elite Volcano Supervisor",total=2}}},
+    {minLevel=355,maxLevel=370,questName="Marine Ford Quest 1",ilha="Marine Ford",giver="Marine Ford Quest Giver",title="Bastion Reach Quest 1",objetivos={{nome="Marine Rookie",total=3},{nome="Marine Soldier",total=2}}},
+    {minLevel=370,maxLevel=385,questName="Marine Ford Quest 2",ilha="Marine Ford",giver="Marine Ford Quest Giver",title="Bastion Reach Quest 2",objetivos={{nome="Marine Sergeant",total=3},{nome="Marine Lieutenant",total=2}}},
+    {minLevel=385,maxLevel=400,questName="Marine Ford Quest 3",ilha="Marine Ford",giver="Marine Ford Quest Giver",title="Bastion Reach Quest 3",objetivos={{nome="Marine Captain",total=3},{nome="Marine Admiral Candidate",total=2}}},
+    {minLevel=400,maxLevel=415,questName="Nerúvia Quest 1",ilha="Nerúvia",giver="Nerúvia Quest Giver",title="Nerúvia Quest 1",objetivos={{nome="VoidWalker Musket Pirate",total=2},{nome="VoidWalker Cutlass Pirate",total=3}}},
+    {minLevel=415,maxLevel=430,questName="Nerúvia Quest 2",ilha="Nerúvia",giver="Nerúvia Quest Giver",title="Nerúvia Quest 2",objetivos={{nome="VoidWalker Flint Pirate",total=2},{nome="Veteran VoidWalker Musket Pirate",total=1},{nome="Veteran VoidWalker Cutlass Pirate",total=2}}},
+    {minLevel=430,maxLevel=500,questName="Nerúvia Quest 3",ilha="Nerúvia",giver="Nerúvia Quest Giver",title="Nerúvia Quest 3",objetivos={{nome="Elite VoidWalker Musket Pirate",total=2},{nome="Elite VoidWalker Flint Pirate",total=1},{nome="Elite VoidWalker Cutlass Pirate",total=2}}},
+}
+
+
+local INTERFACE_URL = "https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/InterfaceScript"
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local RS = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local player = Players.LocalPlayer
+local env = getgenv()
+
+if type(env.GRHubStop) == "function" then pcall(env.GRHubStop) end
+for _, key in ipairs({"GRHubConn", "GRHubChar", "GRHubAFK", "GRHubNoclip"}) do
+    if env[key] then pcall(function() env[key]:Disconnect() end); env[key] = nil end
+end
+local runId = (env.GRHubRun or 0) + 1
+env.GRHubRun = runId
+local function running() return env.GRHubRun == runId end
+
+local State = {AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local MODOS = {
+    {Name="Normal",Velocidade=150,Ataque=0.06},
+    {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
+    {Name="Turbo",Velocidade=450,Ataque=0.025},
+    {Name="Ultra",Velocidade=650,Ataque=0.015}
+}
+local ALTURAS = {
+    {Name="Perto (3)",Valor=3},{Name="Médio (6)",Valor=6},
+    {Name="Longe (9)",Valor=9},{Name="Muito longe (12)",Valor=12},
+    {Name="Super Alto (15)",Valor=15}
+}
+local ALTURAS_VOO = {
+    {Name="Baixo (50)",Valor=50},{Name="Normal (90)",Valor=90},
+    {Name="Alto (150)",Valor=150},{Name="Muito Alto (250)",Valor=250},
+    {Name="Super Alto (400)",Valor=400}
+}
+local TOOL_TYPES = {
+    {Name="Sword", Valor="Sword"},
+    {Name="Combat", Valor="Combat"},
+    {Name="Fruit", Valor="Fruit"},
+    {Name="Gun", Valor="Gun"}
+}
+local FRUIT_NAMES = {
+    "Barrier", "Bomb", "Buddha", "Dark", "Divide", "Flame",
+    "Gravity", "Haze", "Ice", "Kilo", "Light",
+    "Magma", "Mirror", "Rubber", "Sand", "Thorn", "Venom"
+}
+local FRUIT_ALIASES = {
+    Boom="Bomb", Zen="Buddha", Eclipse="Dark", Blaze="Flame",
+    Orbit="Gravity", Frozen="Ice", Weight="Kilo", Shine="Light",
+    Vulcanic="Magma", Elastic="Rubber", Dust="Sand", Poison="Venom",
+    Protection="Barrier"
+}
+local FRUIT_RARITY = {
+    Barrier="Rare", Bomb="Rare", Buddha="Mythical", Dark="Legendary",
+    Divide="Epic", Flame="Epic", Forest="Mythical", Gravity="Mythical",
+    Haze="Rare", Ice="Legendary", Kilo="Common", Light="Legendary",
+    Magma="Epic", Mirror="Legendary", Operator="Mythical",
+    Rubber="Legendary", Sand="Epic", Thorn="Common", Venom="Mythical"
+}
+local FRUIT_COLOR = {
+    Common=Color3.fromRGB(185,185,185),
+    Rare=Color3.fromRGB(64,160,255),
+    Epic=Color3.fromRGB(190,95,255),
+    Legendary=Color3.fromRGB(255,185,45),
+    Mythical=Color3.fromRGB(255,65,105)
+}
+local frutasSelecionadas = {}
+for _, nome in ipairs(FRUIT_NAMES) do frutasSelecionadas[nome]=true end
+local contadorFrutas = 0
+local ultimoTPFruta, ultimaLojaFruta = 0, 0
+local alvoFruta, nomeFrutaAtual = nil, nil
+local espFrutas = {}
+local pastaFrutasCache, ultimaVarreduraFrutas, frutasVisiveis = nil, 0, {}
+local ultimoErroFruta = 0
+local statusFruta = "Desligado"
+local frutaOcupada = false
+local inicioTentativaFruta = 0
+local ultimoContatoFruta = 0
+local ultimoProgressoFruta = 0
+local distanciaAnteriorFruta = math.huge
+local faseFruta = "Parado"
+local frutaTPFeito = false
+local cooldownFrutasAte = 0
+local falhasFrutas = 0
+local blacklistFrutas = setmetatable({}, {__mode = "k"})
+local tipoToolSelecionado = "Sword"
+local STATS_NAMES = {"Strength","Endurance","Sword","Gun","DevilFruit"}
+local statSelecionado = "Sword"
+local ultimoUpgradeStats, ultimaQuantidadeStats, statusStats = 0, 0, "Desligado"
+local pescaHUD, pescaPeixe, pescaControle = nil, nil, nil
+local conexoesPesca = {}
+local pescandoAgora, ultimoLancamentoPesca, bloquearAtePesca = false, 0, 0
+local statusPesca, lastFishY = "Desligado", nil
+local modo, alturaInimigo, alturaVoo = MODOS[2], 6, 90
+local status, faseVoo = "Desligado", "Parado"
+local campanha, objetivo, alvo, destinoNPC
+local nivelCache = 1
+local dadosModulo, mainModulo, repeatModulo, privateClient
+local conexoes, origHum, colisoes = {}, {}, {}
+local bodyVelocity, bodyGyro, rootControlado, humControlado, autoRotateOriginal
+local rota, ultimoInicioRota, ultimaColisao = nil, 0, 0
+local indexInimigos, pastaInimigos, ultimaIndexacao, ultimaBusca, ultimaBuscaFallback = {}, nil, 0, 0, 0
+local ultimaQuest, ultimoAtaque, ultimoPedido, ultimoPrompt = 0, 0, 0, 0
+local repeatOffer, repeatPending, conclusaoDesde = nil, 0, 0
+local alvoVida, alvoSemDano = nil, 0
+local blacklist = setmetatable({}, {__mode="k"})
+local afkConn, loopId = nil, 0
+local ultimaInteracaoPorta, ultimaTrocaLocal, ultimoLocal = 0, 0, nil
+local motivoPorta = ""
+local lookup = {}
+for _, c in ipairs(CAMPANHAS) do lookup[c.questName] = c end
+
+local function connect(signal, fn)
+    local c = signal:Connect(fn)
+    table.insert(conexoes,c)
+    return c
+end
+local function character()
+    local char = player.Character
+    return char, char and char:FindFirstChild("HumanoidRootPart"), char and char:FindFirstChildOfClass("Humanoid")
+end
+local function normalizar(s)
+    return (tostring(s or ""):lower():gsub("[^%w]", ""))
+end
+local function toggle(v, old)
+    if type(v)=="boolean" then return v end
+    if type(v)=="string" then return v=="true" or v=="on" end
+    return not old
+end
+local function posicaoDe(obj)
+    if typeof(obj)=="Vector3" then return obj end
+    if typeof(obj)=="CFrame" then return obj.Position end
+    if typeof(obj)~="Instance" then return nil end
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Attachment") then return obj.WorldPosition end
+    if obj:IsA("Model") then return obj:GetPivot().Position end
+    if obj:IsA("CFrameValue") then return obj.Value.Position end
+    if obj:IsA("Vector3Value") then return obj.Value end
+    return nil
+end
+
+pcall(function()
+    local e = RS:WaitForChild("Elysium",10)
+    local module = e and e:FindFirstChild("Modules")
+    if module then dadosModulo = require(module) end
+end)
+pcall(function()
+    local s=RS:WaitForChild("Shared",10)
+    local m=s and s:FindFirstChild("MainModules")
+    if m then mainModulo=require(m) end
+end)
+pcall(function()
+    local mod=RS:FindFirstChild("Modules")
+    local essential=mod and mod:FindFirstChild("Essentials")
+    local inter=essential and essential:FindFirstChild("InteractionSystem")
+    local client=inter and inter:FindFirstChild("InteractionSystem Client")
+    local module=client and client:FindFirstChild("PrivateAreas Client")
+    if module then privateClient=require(module) end
+end)
+pcall(function()
+    local mod=RS:FindFirstChild("Modules")
+    local essential=mod and mod:FindFirstChild("Essentials")
+    local quest=essential and essential:FindFirstChild("QuestSystem")
+    local client=quest and quest:FindFirstChild("QuestSystem Client")
+    local module=client and client:FindFirstChild("RepeatQuest")
+    if module then repeatModulo=require(module) end
+end)
+
+local net=RS:WaitForChild("NetworkInstances",15)
+local remotes=net and net:WaitForChild("RemoteEvents",15)
+local QuestEvent=remotes and remotes:WaitForChild("Quests",15)
+local CombatEvent=remotes and remotes:FindFirstChild("CombatTools")
+if not QuestEvent or not QuestEvent:IsA("RemoteEvent") then
+    warn("[GR Hub] Remote de quests indisponível")
+    return
+end
+local function enviarQuest(...)
+    return pcall(function(...) QuestEvent:FireServer(...) end, ...)
+end
+local function lerDados()
+    if not dadosModulo then return nil end
+    local ok,d=pcall(function() return dadosModulo.DataStore.IsClient:Get() end)
+    if ok and type(d)=="table" then return d end
+    return nil
+end
+local function lerNivel(d)
+    local n=d and d.Statistics and tonumber(d.Statistics.Level)
+    if n then nivelCache=n; return n end
+    pcall(function()
+        local lbl=player.PlayerGui.ScreenGuis.MainUI.StatisticsHUD.ExperienceBackground.LevelBackground.Level
+        local v=tonumber(tostring(lbl.Text):match("%d+"))
+        if v then nivelCache=v end
+    end)
+    return nivelCache
+end
+local function questPorNivel(level)
+    if not level then return nil end
+    for _,c in ipairs(CAMPANHAS) do
+        if level>=c.minLevel and level<c.maxLevel then return c end
+    end
+    return nil
+end
+local function lerLabels()
+    local arr={}
+    pcall(function()
+        local frame=player.PlayerGui.ScreenGuis.MainUI.ProgressHUD.ActiveQuest
+        frame=frame:FindFirstChild("Container") or frame
+        for _,o in ipairs(frame:GetDescendants()) do
+            if o:IsA("TextLabel") and o.Text~="" then
+                table.insert(arr,o.Text:gsub("<.->",""))
+            end
+        end
+    end)
+    return arr
+end
+local function questPeloHUD()
+    local melhor,score=nil,0
+    for _,texto in ipairs(lerLabels()) do
+        if not texto:match("%d+%s*/%s*%d+") then
+            local t=normalizar(texto)
+            for _,c in ipairs(CAMPANHAS) do
+                for _,n in ipairs({c.title,c.questName}) do
+                    local nome=normalizar(n)
+                    if #nome>score and t:find(nome,1,true) then melhor,score=c,#nome end
+                end
+            end
+        end
+    end
+    return melhor
+end
+local function questAtiva(d)
+    local actives=d and d.Quests and d.Quests.Actives
+    if type(actives)=="table" then
+        local melhor
+        for nome in pairs(actives) do
+            local c=lookup[nome]
+            if c and (not melhor or c.minLevel>melhor.minLevel) then melhor=c end
+        end
+        if melhor then return melhor end
+    end
+    return questPeloHUD()
+end
+local function objetivoPendente(d,c)
+    local actives=d and d.Quests and d.Quests.Actives
+    local progress=actives and actives[c.questName]
+    local sub=type(progress)=="table" and (progress[1] or progress["1"])
+    if type(sub)=="table" then
+        local count=0
+        for i,o in ipairs(c.objetivos) do
+            local v=tonumber(sub[i] or sub[tostring(i)])
+            if v~=nil then
+                count+=1
+                if v<o.total then return o.nome,true end
+            end
+        end
+        if count==#c.objetivos then return nil,true end
+    end
+    local reconheceu=false
+    local labels=lerLabels()
+    for _,o in ipairs(c.objetivos) do
+        for _,s in ipairs(labels) do
+            local a,b=s:match("(%d+)%s*/%s*(%d+)")
+            if a and b and normalizar(s):find(normalizar(o.nome),1,true) then
+                reconheceu=true
+                if tonumber(a)<tonumber(b) then return o.nome,true end
+            end
+        end
+    end
+    return nil,reconheceu
+end
+
+local function encontrarNPC(c)
+    if not c then return nil,nil end
+    local anchors=RS:FindFirstChild("NpcAnchors")
+    local a=anchors and anchors:FindFirstChild(c.giver)
+    if a and a:IsA("CFrameValue") then return a.Value,nil end
+    if mainModulo and mainModulo.InterestPoints then
+        local ok,p=pcall(function() return mainModulo.InterestPoints:Get("Character_"..c.giver) end)
+        if ok and p then
+            local pos=posicaoDe(p)
+            if pos then return CFrame.new(pos),nil end
+        end
+    end
+    local ignore=workspace:FindFirstChild("IgnoreList")
+    local int=ignore and ignore:FindFirstChild("Int")
+    local npcs=int and int:FindFirstChild("NPCs")
+    local npc=npcs and npcs:FindFirstChild(c.giver,true)
+    if not npc then npc=workspace:FindFirstChild(c.giver,true) end
+    if npc and npc:IsA("Model") then return npc:GetPivot(),npc end
+    return nil,nil
+end
+local function tipoRealTool(tool)
+    if not tool or not tool:IsA("Tool") then return nil end
+    local function traduzTipo(t)
+        t=tostring(t or ""):lower()
+        if t=="sword" then return "Sword" end
+        if t=="style" or t=="combat" or t=="fightingstyle" or t=="melee" then return "Combat" end
+        if t=="fruit" or t=="devilfruit" then return "Fruit" end
+        if t=="gun" then return "Gun" end
+        return nil
+    end
+    local candidatos={tool.Name}
+    for _,a in ipairs({"ToolName","OriginalName"}) do
+        local nome=tool:GetAttribute(a)
+        if type(nome)=="string" and nome~="" then
+            table.insert(candidatos,nome)
+        end
+    end
+    local tabelaInfo=mainModulo and mainModulo.Tools and mainModulo.Tools.ToolsInfo
+    if type(tabelaInfo)=="table" then
+        for _,nome in ipairs(candidatos) do
+            local info=tabelaInfo.Infos and tabelaInfo.Infos[nome]
+            if not info and type(tabelaInfo.Get)=="function" then
+                local ok,resultado=pcall(function() return tabelaInfo:Get(nome) end)
+                if ok then info=resultado end
+            end
+            if type(info)=="table" then
+                local classe=traduzTipo(info.ToolType)
+                if classe then return classe end
+            end
+        end
+    end
+    local shared=RS:FindFirstChild("Shared")
+    local main=shared and shared:FindFirstChild("MainModules")
+    local tools=main and main:FindFirstChild("Tools")
+    local infos=tools and tools:FindFirstChild("ToolsInfo")
+    if infos then
+        for _,categoria in ipairs({"Sword","Style","Fruit","Gun"}) do
+            local pasta=infos:FindFirstChild(categoria)
+            if pasta then
+                for _,nome in ipairs(candidatos) do
+                    if pasta:FindFirstChild(nome) then
+                        return traduzTipo(categoria)
+                    end
+                end
+            end
+        end
+    end
+    local porAtributo=traduzTipo(tool:GetAttribute("ToolType"))
+        or traduzTipo(tool:GetAttribute("Type"))
+    if porAtributo then return porAtributo end
+    if tool.Name=="Combat" then return "Combat" end
+    return nil
+end
+
+local function equiparArma()
+    local char,root,hum=character()
+    if not char or not hum or hum.Health<=0 then return nil end
+    local equipada=char:FindFirstChildWhichIsA("Tool")
+    if equipada and tipoRealTool(equipada)==tipoToolSelecionado then
+        return equipada
+    end
+    local bp=player:FindFirstChild("Backpack")
+    local escolhida
+    if bp then
+        for _,item in ipairs(bp:GetChildren()) do
+            if item:IsA("Tool") and tipoRealTool(item)==tipoToolSelecionado then
+                escolhida=item
+                break
+            end
+        end
+    end
+    if equipada and equipada~=escolhida then
+        pcall(function() hum:UnequipTools() end)
+    end
+    if not escolhida then return nil end
+    local ok=pcall(function() hum:EquipTool(escolhida) end)
+    if not ok then return nil end
+    local atual=char:FindFirstChildWhichIsA("Tool")
+    if atual and tipoRealTool(atual)==tipoToolSelecionado then
+        return atual
+    end
+    return nil
+end
+
+local function selecionarTipoTool(v)
+    if type(v)=="table" then v=v.Valor or v.Name or v.Value end
+    if type(v)=="number" and TOOL_TYPES[v] then v=TOOL_TYPES[v].Valor end
+    for _,opcao in ipairs(TOOL_TYPES) do
+        if v==opcao.Valor then
+            tipoToolSelecionado=v
+            equiparArma()
+            return
+        end
+    end
+end
+local debugBusca = {
+    candidatos=0, correspondentes=0, validos=0,
+    semRoot=0, mortos=0, renderFalse=0, blacklist=0,
+    fonte="-", grupo="-", exemplos={}
+}
+local ultimaBuscaCompleta = 0
+local cacheGrupo = {}
+
+local function rootInimigo(e)
+    if not e or not e:IsA("Model") then return nil end
+    return e:FindFirstChild("HumanoidRootPart")
+        or e.PrimaryPart
+        or e:FindFirstChild("HumanoidRootPart", true)
+end
+
+local function nomeConfere(e,nome)
+    if not e or not e:IsA("Model") then return false end
+    if e.Name:lower():find("history",1,true) then return false end
+    local esperado=normalizar(nome)
+    if esperado=="" then return false end
+    local nomes={
+        e.Name,
+        e:GetAttribute("OriginalName"),
+        e:GetAttribute("EnemyName"),
+        e:GetAttribute("AlternativeName"),
+        e:GetAttribute("DisplayName"),
+        e:GetAttribute("NPCName"),
+        e:GetAttribute("MobName"),
+        e:GetAttribute("EntityName")
+    }
+    for _,n in pairs(nomes) do
+        if n~=nil then
+            local atual=normalizar(tostring(n):gsub("[_%- ]?%d+$",""))
+            if atual==esperado or (#atual>#esperado and atual:sub(1,#esperado)==esperado) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function vidaInimigo(e)
+    local h=e:GetAttribute("HandlerHealth")
+    if type(h)=="number" then return h end
+    local hum=e:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health
+end
+
+local function motivoInvalido(e)
+    if not e or not e.Parent then return "semParent" end
+    if e:GetAttribute("Dead")==true or e:GetAttribute("IsDead")==true then return "morto" end
+    if e:GetAttribute("Render")==false then return "renderFalse" end
+    if not rootInimigo(e) then return "semRoot" end
+    if blacklist[e] and os.clock()-blacklist[e]<9 then return "blacklist" end
+    local h=vidaInimigo(e)
+    if h and h<=0 then return "morto" end
+    return nil
+end
+
+local function valido(e)
+    return motivoInvalido(e)==nil
+end
+
+local function reindexar()
+    if os.clock()-ultimaIndexacao<0.8 then return end
+    ultimaIndexacao=os.clock()
+    table.clear(indexInimigos)
+    local vistos={}
+    local fontes={}
+    local function incluir(e)
+        if e:IsA("Model") and not vistos[e] then
+            vistos[e]=true
+            table.insert(indexInimigos,e)
+        end
+    end
+    local function adicionarPasta(base)
+        if not base then return end
+        for _,nome in ipairs({"Enemys","Enemies"}) do
+            local pasta=base:FindFirstChild(nome)
+            if pasta then
+                table.insert(fontes,pasta:GetFullName())
+                for _,e in ipairs(pasta:GetDescendants()) do
+                    if e:IsA("Model") and (e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart or e:GetAttribute("EnemyName")) then
+                        incluir(e)
+                    end
+                end
+                for _,e in ipairs(pasta:GetChildren()) do
+                    if e:IsA("Model") then incluir(e) end
+                end
+            end
+        end
+    end
+    local play=workspace:FindFirstChild("Playability")
+    local ignore=workspace:FindFirstChild("IgnoreList")
+    local int=ignore and ignore:FindFirstChild("Int")
+    adicionarPasta(play)
+    adicionarPasta(int)
+    adicionarPasta(ignore)
+    adicionarPasta(workspace)
+    if #indexInimigos==0 then
+        for _,base in ipairs({play or false,int or false,ignore or false}) do
+            if base then
+                for _,e in ipairs(base:GetDescendants()) do
+                    if e:IsA("Model") and rootInimigo(e) then incluir(e) end
+                end
+            end
+        end
+    end
+    debugBusca.fonte=#fontes>0 and table.concat(fontes," | ") or "Fallback"
+end
+
+local function encontrarInimigo(nome,root)
+    reindexar()
+    local function buscar()
+        local melhor,menor=nil,math.huge
+        local correspondentes,validos=0,0
+        local semRoot,mortos,renderFalse,blacklisted=0,0,0,0
+        for _,e in ipairs(indexInimigos) do
+            if nomeConfere(e,nome) then
+                correspondentes+=1
+                local motivo=motivoInvalido(e)
+                if not motivo then
+                    local er=rootInimigo(e)
+                    if er then
+                        validos+=1
+                        local d=(er.Position-root.Position).Magnitude
+                        if d<menor then melhor,menor=e,d end
+                    end
+                elseif motivo=="semRoot" then semRoot+=1
+                elseif motivo=="morto" then mortos+=1
+                elseif motivo=="renderFalse" then renderFalse+=1
+                elseif motivo=="blacklist" then blacklisted+=1 end
+            end
+        end
+        debugBusca.candidatos=#indexInimigos
+        debugBusca.correspondentes=correspondentes
+        debugBusca.validos=validos
+        debugBusca.semRoot=semRoot
+        debugBusca.mortos=mortos
+        debugBusca.renderFalse=renderFalse
+        debugBusca.blacklist=blacklisted
+        return melhor
+    end
+    local melhor=buscar()
+    if not melhor and os.clock()-ultimaBuscaCompleta>5 then
+        ultimaBuscaCompleta=os.clock()
+        local vistos={}
+        for _,e in ipairs(indexInimigos) do vistos[e]=true end
+        for _,e in ipairs(workspace:GetDescendants()) do
+            if e:IsA("Model") and not vistos[e] and nomeConfere(e,nome) then
+                table.insert(indexInimigos,e)
+                vistos[e]=true
+            end
+        end
+        melhor=buscar()
+    end
+    debugBusca.exemplos={}
+    if not melhor then
+        for _,e in ipairs(indexInimigos) do
+            if #debugBusca.exemplos>=18 then break end
+            if e:IsA("Model") then
+                table.insert(debugBusca.exemplos,e.Name.." ["..tostring(e:GetAttribute("OriginalName") or e:GetAttribute("EnemyName") or "-").."]")
+            end
+        end
+    end
+    return melhor
+end
+
+local function pontoGrupoInimigo(nome,root)
+    local agora=os.clock()
+    local c=cacheGrupo[nome]
+    if c and agora-c.t<1.5 and c.p and c.p.Parent then
+        debugBusca.grupo=c.p:GetFullName()
+        return c.p.Position
+    end
+    local ignore=workspace:FindFirstChild("IgnoreList")
+    local data=ignore and ignore:FindFirstChild("Data")
+    local pasta=data and data:FindFirstChild("EnemyGroups")
+    if not pasta then
+        debugBusca.grupo="Pasta EnemyGroups indisponível"
+        return nil
+    end
+    local melhor,menor=nil,math.huge
+    local texto=","..nome.."," 
+    for _,obj in ipairs(pasta:GetDescendants()) do
+        if obj:IsA("BasePart") and obj:GetAttribute("Wide")~=true then
+            local nomes=obj:GetAttribute("Enemies")
+            if type(nomes)=="string" and nomes:find(texto,1,true) then
+                local ponto=obj:FindFirstChild(nome)
+                if not (ponto and ponto:IsA("BasePart")) then ponto=obj end
+                local d=(ponto.Position-root.Position).Magnitude
+                if d<menor then melhor,menor=ponto,d end
+            end
+        end
+    end
+    if melhor then
+        cacheGrupo[nome]={p=melhor,t=agora}
+        debugBusca.grupo=melhor:GetFullName()
+        return melhor.Position
+    end
+    debugBusca.grupo="Sem marcador para "..nome
+    return nil
+end
+
+local function configurarHum(hum)
+    if not hum then return end
+    if not origHum[hum] then
+        origHum[hum]={fall=hum:GetStateEnabled(Enum.HumanoidStateType.FallingDown),rag=hum:GetStateEnabled(Enum.HumanoidStateType.Ragdoll)}
+    end
+    local original=origHum[hum]
+    pcall(function()
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, not State.AntiQueda and original.fall)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, not State.AntiQueda and original.rag)
+    end)
+end
+local function liberarFisica()
+    if bodyVelocity then pcall(function() bodyVelocity:Destroy() end);bodyVelocity=nil end
+    if bodyGyro then pcall(function() bodyGyro:Destroy() end);bodyGyro=nil end
+    if humControlado and humControlado.Parent then
+        pcall(function() humControlado.AutoRotate=autoRotateOriginal end)
+    end
+    for p,val in pairs(colisoes) do
+        if p.Parent then pcall(function() p.CanCollide=val end) end
+    end
+    table.clear(colisoes)
+    if rootControlado and rootControlado.Parent then
+        pcall(function()
+            rootControlado.AssemblyLinearVelocity=Vector3.zero
+            rootControlado.AssemblyAngularVelocity=Vector3.zero
+        end)
+    end
+    rootControlado,humControlado,autoRotateOriginal=nil,nil,nil
+end
+local function liberarVoo()
+    rota=nil
+    liberarFisica()
+    faseVoo="Parado"
+end
+local function prepararVoo(char,root,hum)
+    if rootControlado==root and bodyVelocity and bodyVelocity.Parent and bodyGyro and bodyGyro.Parent then return end
+    liberarFisica()
+    rootControlado,humControlado,autoRotateOriginal=root,hum,hum.AutoRotate
+    hum.AutoRotate=false
+    bodyVelocity=Instance.new("BodyVelocity")
+    bodyVelocity.Name="GRHubFlyVelocity"
+    bodyVelocity.P=3000
+    bodyVelocity.MaxForce=Vector3.new(0,math.max(10000,root.AssemblyMass*workspace.Gravity*1.5),0)
+    bodyVelocity.Velocity=Vector3.zero
+    bodyVelocity.Parent=root
+    bodyGyro=Instance.new("BodyGyro")
+    bodyGyro.Name="GRHubFlyGyro"
+    bodyGyro.P=12000
+    bodyGyro.D=1200
+    bodyGyro.MaxTorque=Vector3.new(0,1e8,0)
+    bodyGyro.CFrame=root.CFrame
+    bodyGyro.Parent=root
+end
+local function atualizarColisao(char)
+    for _,p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then
+            if colisoes[p]==nil then colisoes[p]=p.CanCollide end
+            p.CanCollide=false
+        end
+    end
+end
+
+local function localAtual()
+    return player:GetAttribute("CurrentLocation")
+end
+local function dentroVulcao()
+    local loc=localAtual()
+    return loc=="Volcano Interior" or loc=="Volcano Boss Room"
+end
+local function emTransicao()
+    return player:GetAttribute("Elysium_Teleporting")~=nil
+end
+local function encontrarPortaVulcao(area,dir)
+    local ignore=workspace:FindFirstChild("IgnoreList")
+    local int=ignore and ignore:FindFirstChild("Int")
+    local private=int and int:FindFirstChild("PrivateAreas")
+    local ilha=private and private:FindFirstChild("Volcano Island")
+    local p=ilha and ilha:FindFirstChild(area)
+    local sec=p and p:FindFirstChild(dir)
+    local part=sec and sec:FindFirstChild("Entrance")
+    if part and part:IsA("BasePart") then return part.Position,part,sec end
+    local attr=sec and sec:GetAttribute("Entrance")
+    if typeof(attr)=="Vector3" then return attr,nil,sec end
+    return nil,nil,sec
+end
+local function alturaSegura(origem,destino)
+    local horizontal=Vector3.new(destino.X-origem.X,0,destino.Z-origem.Z).Magnitude
+    local y=math.max(origem.Y,destino.Y)
+    if horizontal<20 then return y end
+    if dentroVulcao() then return y+math.min(alturaVoo,8) end
+    y+=alturaVoo
+    local filtros={workspace.Terrain}
+    for _,nome in ipairs({"Map","Islands"}) do
+        local v=workspace:FindFirstChild(nome)
+        if v then table.insert(filtros,v) end
+    end
+    local params=RaycastParams.new()
+    params.FilterType=Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances=filtros
+    params.IgnoreWater=true
+    local amostras=math.clamp(math.ceil(horizontal/75),2,35)
+    local topo=y+1500
+    for i=0,amostras do
+        local pt=origem:Lerp(destino,i/amostras)
+        local hit=workspace:Raycast(Vector3.new(pt.X,topo,pt.Z),Vector3.new(0,-4000,0),params)
+        if hit then y=math.max(y,hit.Position.Y+35) end
+    end
+    return y
+end
+local function criarRota(root,destino,chave)
+    local origem=root.Position
+    local horizontal=Vector3.new(destino.X-origem.X,0,destino.Z-origem.Z).Magnitude
+    rota={root=root,chave=chave,destino=destino,cruzeiro=alturaSegura(origem,destino),fase=horizontal<20 and 3 or 1,concluida=false}
+    ultimoInicioRota=os.clock()
+end
+local function definirDestino(destino,chave)
+    if typeof(destino)~="Vector3" then liberarVoo();return end
+    local _,root=character()
+    if not root then liberarVoo();return end
+    if not rota or rota.chave~=chave or rota.root~=root then
+        criarRota(root,destino,chave);return
+    end
+    local diff=(rota.destino-destino).Magnitude
+    local tempo=os.clock()-ultimoInicioRota
+    if rota.concluida then
+        if (root.Position-destino).Magnitude>6 and tempo>0.35 then criarRota(root,destino,chave)
+        else rota.destino=destino end
+        return
+    end
+    if diff>28 and tempo>0.75 then criarRota(root,destino,chave);return end
+    rota.destino=destino
+    if destino.Y>rota.cruzeiro then rota.cruzeiro=destino.Y+3;rota.fase=1 end
+    if rota.fase==3 then
+        local h=Vector3.new(destino.X-root.Position.X,0,destino.Z-root.Position.Z).Magnitude
+        if h>4 then rota.fase=2 end
+    end
+end
+local function atualizarVoo(dt)
+    if not (State.AutoFarmQuest or State.AutoFarmFruit) or not running() then return end
+    local r=rota
+    if not r or typeof(r.destino)~="Vector3" then return end
+    if emTransicao() then liberarVoo();return end
+    local char,root,hum=character()
+    if not char or not root or not hum or hum.Health<=0 or r.root~=root then liberarVoo();return end
+    prepararVoo(char,root,hum)
+    if rota~=r then return end
+    if os.clock()-ultimaColisao>0.5 then ultimaColisao=os.clock();atualizarColisao(char) end
+    local flat=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
+    if flat.Magnitude>0.1 and bodyGyro then bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+flat) end
+    if r.concluida then faseVoo="No destino";return end
+    local restante=modo.Velocidade*math.min(dt,0.1)
+    for _=1,12 do
+        if restante<=0 or rota~=r then break end
+        local pos=root.Position
+        local destino
+        if r.fase==1 then
+            faseVoo="Subindo"
+            destino=Vector3.new(pos.X,r.cruzeiro,pos.Z)
+        elseif r.fase==2 then
+            faseVoo="Voo horizontal"
+            destino=Vector3.new(r.destino.X,r.cruzeiro,r.destino.Z)
+        elseif r.fase==3 then
+            faseVoo="Descendo"
+            if Vector3.new(pos.X-r.destino.X,0,pos.Z-r.destino.Z).Magnitude>3 then r.fase=2;continue end
+            destino=Vector3.new(pos.X,r.destino.Y,pos.Z)
+        else
+            r.concluida=true;faseVoo="No destino";break
+        end
+        local delta=destino-pos
+        local dist=delta.Magnitude
+        if dist<0.25 then r.fase+=1;continue end
+        local passo=math.min(dist,restante,18)
+        char:TranslateBy(delta.Unit*passo)
+        restante-=passo
+        if passo>=dist-0.25 then r.fase+=1 end
+    end
+end
+
+local function tentarRepeat(c)
+    if not State.AutoRepeat or not c then return false end
+    local nome,expires
+    if repeatModulo then nome,expires=repeatModulo.QuestName,repeatModulo.ExpiresAt end
+    if not nome and repeatOffer then nome,expires=repeatOffer.name,repeatOffer.expires end
+    if nome~=c.questName then return false end
+    if type(expires)=="number" and workspace:GetServerTimeNow()>=expires then repeatOffer=nil;return false end
+    if os.clock()-ultimoPedido<0.8 then return false end
+    ultimoPedido=os.clock()
+    local ok=enviarQuest("Repeat")
+    if ok then repeatOffer=nil;repeatPending=os.clock();status="Repetindo missão" end
+    return ok
+end
+local function interagirNPC(cf,model)
+    if os.clock()-ultimoPrompt<2 then return end
+    ultimoPrompt=os.clock()
+    local prompts={}
+    if model then
+        for _,p in ipairs(model:GetDescendants()) do
+            if p:IsA("ProximityPrompt") then table.insert(prompts,p) end
+        end
+    end
+    if #prompts==0 then
+        for _,p in ipairs(workspace:GetDescendants()) do
+            if p:IsA("ProximityPrompt") then
+                local pos=posicaoDe(p.Parent)
+                if pos and (pos-cf.Position).Magnitude<15 then table.insert(prompts,p) end
+            end
+        end
+    end
+    for _,p in ipairs(prompts) do
+        if fireproximityprompt then pcall(fireproximityprompt,p)
+        else pcall(function() p:InputHoldBegin();task.delay(math.max(p.HoldDuration,0.1),function() if p.Parent then p:InputHoldEnd() end end) end) end
+    end
+end
+local function entrarPorta(pos,part,container)
+    if os.clock()-ultimaInteracaoPorta<1.5 then return end
+    ultimaInteracaoPorta=os.clock()
+    local _,root,hum=character()
+    if not root or not hum then return end
+    pcall(function() hum:MoveTo(pos) end)
+    if part and firetouchinterest then
+        pcall(function() firetouchinterest(root,part,0);firetouchinterest(root,part,1) end)
+    end
+    if container then
+        for _,p in ipairs(container:GetDescendants()) do
+            if p:IsA("ProximityPrompt") then
+                if fireproximityprompt then pcall(fireproximityprompt,p)
+                else pcall(function() p:InputHoldBegin();task.delay(math.max(p.HoldDuration,0.15),function() if p.Parent then p:InputHoldEnd() end end) end) end
+            end
+        end
+    end
+    if privateClient and privateClient.Current and dadosModulo and dadosModulo.Network then
+        pcall(function() dadosModulo.Network:FireServer("PrivateAreas","EnterArea",privateClient.Current) end)
+    end
+end
+local function verificarPassagemVulcao()
+    local _,root,hum=character()
+    if not root or not hum or hum.Health<=0 then return false end
+    local loc=localAtual()
+    if loc~=ultimoLocal then
+        ultimoLocal=loc
+        ultimaTrocaLocal=os.clock()
+        liberarVoo()
+    end
+    if emTransicao() then
+        liberarVoo();status="Aguardando transição de área";motivoPorta="Teleporte do jogo";return true
+    end
+    if os.clock()-ultimaTrocaLocal<0.8 then return true end
+    local ehVolcano=campanha and campanha.ilha=="Volcano Island"
+    local estaDentro=dentroVulcao()
+    local precisaEntrar=ehVolcano and not estaDentro and (objetivo~=nil or (destinoNPC and destinoNPC.Position.Y< -250))
+    local precisaSair=not ehVolcano and estaDentro
+    if not precisaEntrar and not precisaSair then motivoPorta="";return false end
+    if precisaEntrar and root.Position.Y< -300 then
+        liberarVoo();status="Aguardando localização do interior";motivoPorta="Posição subterrânea sem localização";return true
+    end
+    local area="VolcanoInterior"
+    local dir=precisaEntrar and "Enter" or "Leave"
+    if precisaSair and loc=="Volcano Boss Room" then area="VolcanoBossRoom" end
+    local pos,part,container=encontrarPortaVulcao(area,dir)
+    if not pos then
+        liberarVoo();status="Entrada do Vulcão não carregada";motivoPorta="Porta não encontrada";return true
+    end
+    local dist=(root.Position-pos).Magnitude
+    if dist>6 then
+        status=precisaEntrar and "Indo para a porta do Vulcão" or "Saindo pela porta do Vulcão"
+        motivoPorta="Indo à porta "..area.."/"..dir
+        definirDestino(pos+Vector3.new(0,2,0),"Porta_"..area..dir)
+    else
+        liberarVoo()
+        status="Interagindo com a porta do Vulcão"
+        motivoPorta="Próximo à porta"
+        entrarPorta(pos,part,container)
+    end
+    return true
+end
+
+local function limparAlvo()
+    alvo,alvoVida,alvoSemDano=nil,nil,0
+end
+local function advanceQuest()
+    local d=lerDados()
+    local now=os.clock()
+    local level=lerNivel(d)
+    local wanted=questPorNivel(level)
+    local active=questAtiva(d)
+    if not wanted then
+        status="Nenhuma missão para este nível";campanha=nil;objetivo=nil;destinoNPC=nil;limparAlvo();return
+    end
+    if active and active.questName~=wanted.questName then
+        if State.AbandonarOutra or level>=active.maxLevel then
+            status="Abandonando missão anterior: "..active.questName
+            campanha=wanted;objetivo=nil;destinoNPC=nil;limparAlvo()
+            if now-ultimoPedido>=1.5 then ultimoPedido=now;enviarQuest("Abandon",active.questName) end
+            return
+        end
+        wanted=active
+    end
+    local selected=active or wanted
+    if campanha~=selected then
+        campanha=selected;objetivo=nil;destinoNPC=nil;conclusaoDesde=0;limparAlvo();liberarVoo()
+    end
+    if active and active.questName==selected.questName then
+        repeatPending=0
+        local novo,conhecido=objetivoPendente(d,selected)
+        if objetivo~=novo then objetivo=novo;limparAlvo() end
+        destinoNPC=nil
+        if novo then status="Farmando: "..novo;conclusaoDesde=0
+        elseif conhecido then
+            status="Aguardando conclusão da missão"
+            if conclusaoDesde==0 then conclusaoDesde=now end
+            if tentarRepeat(selected) then return end
+            if now-conclusaoDesde>5 and now-ultimoPedido>=2 then
+                ultimoPedido=now;enviarQuest("Abandon",selected.questName);conclusaoDesde=0
+            end
+        else status="Aguardando progresso" end
+        return
+    end
+    objetivo=nil;limparAlvo()
+    if now-repeatPending<3 then destinoNPC=nil;status="Aguardando Auto Repeat";return end
+    if tentarRepeat(wanted) then destinoNPC=nil;return end
+    local cf,model=encontrarNPC(wanted)
+    if not cf then status="NPC não encontrado: "..wanted.giver;destinoNPC=nil;return end
+    local pos=cf.Position+cf.LookVector*3+Vector3.new(0,2,0)
+    destinoNPC=CFrame.lookAt(pos,cf.Position)
+    status="Indo ao NPC: "..wanted.giver
+    local _,root=character()
+    if root and (root.Position-pos).Magnitude<8 then
+        liberarVoo()
+        status="Aceitando missão: "..wanted.questName
+        if now-ultimoPedido>=1.5 then
+            ultimoPedido=now;enviarQuest("AcceptGrinding",wanted.questName)
+            task.spawn(interagirNPC,cf,model)
+        end
+    end
+end
+local function buscarEAtacar()
+    local char,root,hum=character()
+    if not root or not hum or hum.Health<=0 then liberarVoo();limparAlvo();return end
+    if verificarPassagemVulcao() then return end
+    if not objetivo then
+        if destinoNPC and (root.Position-destinoNPC.Position).Magnitude>7 then
+            definirDestino(destinoNPC.Position,"NPC_"..tostring(campanha and campanha.questName))
+        else liberarVoo() end
+        return
+    end
+    if alvo and not valido(alvo) then limparAlvo() end
+    if alvo then
+        local vida=vidaInimigo(alvo)
+        if vida then
+            if not alvoVida or vida<alvoVida then alvoVida=vida;alvoSemDano=os.clock()
+            elseif os.clock()-alvoSemDano>6 then
+                local er=alvo:FindFirstChild("HumanoidRootPart")
+                if er and (root.Position-er.Position).Magnitude<14 then
+                    blacklist[alvo]=os.clock();limparAlvo()
+                end
+            end
+        end
+    end
+    if not alvo and os.clock()-ultimaBusca>0.25 then
+        ultimaBusca=os.clock();alvo=encontrarInimigo(objetivo,root)
+        if alvo then alvoVida=vidaInimigo(alvo);alvoSemDano=os.clock() end
+    end
+    if not alvo then
+        local ponto=pontoGrupoInimigo(objetivo,root)
+        if ponto then
+            local destino=ponto+Vector3.new(0,alturaInimigo,0)
+            if (root.Position-destino).Magnitude>9 then
+                status="Indo ao spawn: "..objetivo
+                definirDestino(destino,"Spawn_"..objetivo)
+            else
+                status="Aguardando inimigo aparecer: "..objetivo
+                liberarVoo()
+            end
+        else
+            status="Procurando: "..objetivo.." (sem marcador)"
+            liberarVoo()
+        end
+        return
+    end
+    local er=rootInimigo(alvo)
+    if not er then limparAlvo();liberarVoo();return end
+    definirDestino(er.Position+Vector3.new(0,alturaInimigo,0),alvo)
+end
+local function atacar()
+    if not State.AutoFarmQuest or frutaOcupada or not alvo or not valido(alvo) then return end
+    if emTransicao() or (campanha and campanha.ilha=="Volcano Island" and not dentroVulcao()) then return end
+    local _,root,hum=character()
+    if not root or not hum or hum.Health<=0 then return end
+    local er=alvo:FindFirstChild("HumanoidRootPart")
+    if not er or (root.Position-er.Position).Magnitude>14 then return end
+    if os.clock()-ultimoAtaque<modo.Ataque then return end
+    ultimoAtaque=os.clock()
+    local tool=equiparArma()
+    if not tool then return end
+    pcall(function() tool:Activate() end)
+    if CombatEvent then pcall(function() CombatEvent:FireServer("Activate",tool.Name) end) end
+end
+
+local function definirFarm(v)
+    local ligado=toggle(v,State.AutoFarmQuest)
+    if ligado==State.AutoFarmQuest then return end
+    State.AutoFarmQuest=ligado
+    loopId+=1
+    liberarVoo();limparAlvo()
+    campanha,objetivo,destinoNPC=nil,nil,nil
+    ultimaQuest,ultimaBusca,ultimoPedido,repeatPending,conclusaoDesde=0,0,0,0,0
+    ultimaIndexacao=0
+    blacklist=setmetatable({}, {__mode="k"})
+    if not ligado then status="Desligado";return end
+    status="Iniciando Auto Farm"
+    local id=loopId
+    task.spawn(function()
+        while running() and State.AutoFarmQuest and id==loopId do
+            local ok,err=pcall(function()
+                if not frutaOcupada and not pescandoAgora then
+                    if os.clock()-ultimaQuest>0.3 then ultimaQuest=os.clock();advanceQuest() end
+                    buscarEAtacar()
+                end
+            end)
+            if not ok then status="Erro: "..tostring(err);warn("[GR Hub]",err);liberarVoo();task.wait(0.4) end
+            task.wait(0.1)
+        end
+    end)
+    task.spawn(function()
+        while running() and State.AutoFarmQuest and id==loopId do
+            if not pescandoAgora then pcall(atacar) end
+            task.wait(math.max(modo.Ataque,0.02))
+        end
+    end)
+end
+local function antiQueda(v)
+    State.AntiQueda=toggle(v,State.AntiQueda)
+    local _,_,hum=character()
+    configurarHum(hum)
+end
+local function antiAfk(v)
+    State.AntiAFK=toggle(v,State.AntiAFK)
+    if afkConn then afkConn:Disconnect();afkConn=nil end
+    if State.AntiAFK then
+        afkConn=player.Idled:Connect(function()
+            pcall(function() VirtualUser:CaptureController();VirtualUser:ClickButton2(Vector2.zero) end)
+        end)
+    end
+end
+local limparFrutasESPGeral
+local function pastaFrutas()
+    if pastaFrutasCache and pastaFrutasCache.Parent then return pastaFrutasCache end
+    local p=workspace:FindFirstChild("Playability")
+    pastaFrutasCache=p and p:FindFirstChild("DroppedTools")
+    return pastaFrutasCache
+end
+
+local function nomeDaFruta(item)
+    if not item or not item:IsA("Tool") then return nil end
+    local base=item.Name:gsub("%s+[Ff]ruit$", "")
+    local att=item:GetAttribute("Fruit")
+    if type(att)=="string" and att~="" then base=att:gsub("%s+[Ff]ruit$", "") end
+    local key=base:lower()
+    for _,name in ipairs(FRUIT_NAMES) do
+        if name:lower()==key then return name end
+    end
+    for apelido,canonico in pairs(FRUIT_ALIASES) do
+        if apelido:lower()==key then return canonico end
+    end
+    return nil
+end
+
+local function frutaValida(item)
+    return item and item.Parent and item:IsA("Tool")
+        and (item:GetAttribute("Fruit")~=nil or item.Name:match("[Ff]ruit$"))
+        and nomeDaFruta(item)~=nil
+end
+
+local function handleFruta(item)
+    if not item then return nil end
+    local h=item:FindFirstChild("Handle")
+    if h and h:IsA("BasePart") then return h end
+    for _,v in ipairs(item:GetDescendants()) do
+        if v:IsA("BasePart") then return v end
+    end
+    return nil
+end
+
+local function atualizarListaFrutas()
+    if os.clock()-ultimaVarreduraFrutas<0.5 then return end
+    ultimaVarreduraFrutas=os.clock()
+    table.clear(frutasVisiveis)
+    local folder=pastaFrutas()
+    if not folder then return end
+    for _,item in ipairs(folder:GetChildren()) do
+        if frutaValida(item) and handleFruta(item) then
+            table.insert(frutasVisiveis,item)
+        end
+    end
+end
+
+local function apagarESP(item)
+    local info=espFrutas[item]
+    if not info then return end
+    espFrutas[item]=nil
+    for _,obj in ipairs(info.objects) do
+        pcall(function() if obj and obj.Parent then obj:Destroy() end end)
+    end
+end
+
+limparFrutasESPGeral=function()
+    for item in pairs(espFrutas) do apagarESP(item) end
+end
+
+local function adicionarESP(item)
+    if espFrutas[item] then return end
+    local h=handleFruta(item)
+    local name=nomeDaFruta(item)
+    if not h or not name then return end
+    local rarity=FRUIT_RARITY[name] or "Common"
+    local color=FRUIT_COLOR[rarity] or Color3.new(1,1,1)
+    local glow=Instance.new("Highlight")
+    glow.Name="GRHubFruitHighlight"
+    glow.Adornee=h
+    glow.FillColor=color
+    glow.OutlineColor=color
+    glow.FillTransparency=0.72
+    glow.OutlineTransparency=0
+    glow.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+    glow.Parent=h
+    local bb=Instance.new("BillboardGui")
+    bb.Name="GRHubFruitESP"
+    bb.AlwaysOnTop=true
+    bb.Adornee=h
+    bb.Size=UDim2.fromOffset(185,42)
+    bb.StudsOffsetWorldSpace=Vector3.new(0,3.5,0)
+    bb.MaxDistance=4000
+    bb.Parent=h
+    local text=Instance.new("TextLabel")
+    text.BackgroundTransparency=1
+    text.Size=UDim2.fromScale(1,1)
+    text.TextColor3=color
+    text.TextStrokeColor3=Color3.new(0,0,0)
+    text.TextStrokeTransparency=0
+    text.Font=Enum.Font.GothamBold
+    text.TextSize=13
+    text.TextWrapped=true
+    text.Parent=bb
+    espFrutas[item]={objects={glow,bb},label=text,handle=h,name=name}
+end
+
+local function atualizarESP()
+    if not State.FruitESP then
+        if next(espFrutas) then limparFrutasESPGeral() end
+        return
+    end
+    local _,root=character()
+    for _,item in ipairs(frutasVisiveis) do adicionarESP(item) end
+    for item,info in pairs(espFrutas) do
+        if not frutaValida(item) or not item:IsDescendantOf(pastaFrutas() or workspace) then
+            apagarESP(item)
+        elseif info.label and info.label.Parent and info.handle.Parent then
+            local dist=root and math.floor((root.Position-info.handle.Position).Magnitude) or 0
+            info.label.Text=(frutasSelecionadas[info.name] and "✓ " or "")
+                ..info.name.." Fruit ["..FRUIT_RARITY[info.name].."]\n"..dist.." studs"
+        end
+    end
+end
+
+local function finalizarTentativaFruta(bloquear, pausa)
+    local antiga = alvoFruta
+    if rota and antiga and rota.chave == antiga then
+        liberarVoo()
+    end
+    if bloquear and antiga then
+        blacklistFrutas[antiga] = os.clock() + 18
+        falhasFrutas += 1
+        if falhasFrutas >= 2 then
+            cooldownFrutasAte = os.clock() + 10
+            falhasFrutas = 0
+        end
+    elseif pausa and pausa > 0 then
+        cooldownFrutasAte = os.clock() + pausa
+    end
+    alvoFruta = nil
+    nomeFrutaAtual = nil
+    frutaOcupada = false
+    inicioTentativaFruta = 0
+    ultimoContatoFruta = 0
+    ultimoProgressoFruta = 0
+    distanciaAnteriorFruta = math.huge
+    frutaTPFeito = false
+    faseFruta = "Parado"
+end
+
+local function setFrutasEscolhidas(lista)
+    finalizarTentativaFruta(false, 0)
+    table.clear(frutasSelecionadas)
+    if type(lista) ~= "table" then return end
+    for _, v in ipairs(lista) do
+        local s = type(v) == "table" and (v.Name or v.Value) or v
+        if type(s) == "string" then
+            for _, name in ipairs(FRUIT_NAMES) do
+                if s == name then
+                    frutasSelecionadas[name] = true
+                    break
+                end
+            end
+        end
+    end
+    cooldownFrutasAte = 0
+end
+
+local function encontrarFruta(root)
+    local escolhida, menor = nil, math.huge
+    local agora = os.clock()
+    for _, item in ipairs(frutasVisiveis) do
+        local name = nomeDaFruta(item)
+        local h = handleFruta(item)
+        if name and h and frutasSelecionadas[name]
+            and h.Position.Y >= -250
+            and (not blacklistFrutas[item] or agora >= blacklistFrutas[item]) then
+            local dist = (root.Position - h.Position).Magnitude
+            if dist < menor then
+                escolhida, menor = item, dist
+            end
+        end
+    end
+    return escolhida
+end
+
+local function frutaNoInventario(item, nome)
+    local char = player.Character
+    local mochila = player:FindFirstChild("Backpack")
+    if item and (item.Parent == char or item.Parent == mochila) then
+        return true
+    end
+    for _, base in ipairs({char or false, mochila or false}) do
+        if base then
+            for _, tool in ipairs(base:GetChildren()) do
+                if tool:IsA("Tool") and tool:GetAttribute("Fruit")
+                    and nomeDaFruta(tool) == nome then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function tocarFruta(item, handle, char, root, humanoid)
+    if not handle or not handle.Parent then return false end
+    if (root.Position - handle.Position).Magnitude > 12 then return false end
+
+    if rota and rota.chave == item then
+        liberarVoo()
+    end
+
+    if firetouchinterest then
+        for _, nome in ipairs({"HumanoidRootPart", "UpperTorso", "Torso", "RightFoot", "LeftFoot"}) do
+            local parte = char:FindFirstChild(nome)
+            if parte and parte:IsA("BasePart") then
+                pcall(function()
+                    firetouchinterest(parte, handle, 0)
+                    firetouchinterest(parte, handle, 1)
+                end)
+            end
+        end
+    end
+    local prompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt then
+        if fireproximityprompt then
+            pcall(fireproximityprompt, prompt)
+        else
+            pcall(function()
+                prompt:InputHoldBegin()
+                task.delay(math.max(prompt.HoldDuration, 0.12), function()
+                    if prompt.Parent then prompt:InputHoldEnd() end
+                end)
+            end)
+        end
+    end
+    pcall(function() humanoid:MoveTo(handle.Position) end)
+    return true
+end
+
+local function coletarFruta(item)
+    local handle = handleFruta(item)
+    local char, root, humanoid = character()
+    if not handle or not root or not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+    if emTransicao() or dentroVulcao() or handle.Position.Y < -250 then
+        return false
+    end
+
+    local destino = handle.Position + Vector3.new(0, 2, 0)
+    local distancia = (root.Position - handle.Position).Magnitude
+    local agora = os.clock()
+
+    if not frutaTPFeito then
+        frutaTPFeito = true
+        faseFruta = "TP inicial"
+        if rota then liberarVoo() end
+        pcall(function()
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            root.CFrame = CFrame.new(destino) * root.CFrame.Rotation
+        end)
+        distancia = (root.Position - handle.Position).Magnitude
+    end
+
+    if distancia > 10 then
+        faseFruta = "Voo até a fruta"
+        statusFruta = "Indo até " .. tostring(nomeFrutaAtual)
+        definirDestino(destino, item)
+    else
+        faseFruta = "Tentando coletar"
+        statusFruta = "Coletando " .. tostring(nomeFrutaAtual)
+        if agora - ultimoContatoFruta >= 0.65 then
+            ultimoContatoFruta = agora
+            tocarFruta(item, handle, char, root, humanoid)
+        end
+    end
+    return true
+end
+
+local function remoteStoreFruit()
+    local net=RS:FindFirstChild("NetworkInstances")
+    local events=net and net:FindFirstChild("RemoteEvents")
+    local tools=events and events:FindFirstChild("ToolsData")
+    if tools and tools:IsA("RemoteEvent") then
+        return pcall(function() tools:FireServer("Store") end)
+    end
+    if dadosModulo and dadosModulo.Network and dadosModulo.Network.FireServer then
+        return pcall(function() dadosModulo.Network:FireServer("ToolsData","Store") end)
+    end
+    return false
+end
+
+local function guardarFruta()
+    if not State.AutoStoreFruit or os.clock()-ultimaLojaFruta<2.5 then return end
+    local char,_,hum=character()
+    if not char or not hum or hum.Health<=0 then return end
+    if State.AutoFarmQuest and not State.AutoFarmFruit then return end
+    local backpack=player:FindFirstChild("Backpack")
+    local item=char:FindFirstChildWhichIsA("Tool")
+    if not (item and item:GetAttribute("Fruit")) then item=nil end
+    if not item and backpack then
+        for _,tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool:GetAttribute("Fruit") then item=tool;break end
+        end
+    end
+    if not item then return end
+    if item.Parent~=char then
+        pcall(function() hum:EquipTool(item) end)
+        if item.Parent~=char then
+            statusFruta="Aguardando equipar "..item.Name
+            return
+        end
+    end
+    ultimaLojaFruta=os.clock()
+    local ok=remoteStoreFruit()
+    if ok then
+        statusFruta="Solicitado guardar: "..item.Name
+    else
+        statusFruta="Remoto ToolsData/Store indisponível"
+    end
+end
+
+local function atualizarFarmFruta()
+    if not State.AutoFarmFruit then
+        frutaOcupada = false
+        return
+    end
+
+    if emTransicao() then
+        finalizarTentativaFruta(false, 0)
+        statusFruta = "Aguardando transição"
+        return
+    end
+
+    if dentroVulcao() then
+        finalizarTentativaFruta(false, 0)
+        statusFruta = "Interior: Auto Quest continua até sair"
+        return
+    end
+
+    if not next(frutasSelecionadas) then
+        finalizarTentativaFruta(false, 0)
+        statusFruta = "Nenhuma fruta selecionada"
+        return
+    end
+
+    local char, root, hum = character()
+    if not root or not hum or hum.Health <= 0 then
+        finalizarTentativaFruta(false, 0)
+        return
+    end
+
+    local agora = os.clock()
+    if agora < cooldownFrutasAte then
+        frutaOcupada = false
+        statusFruta = "Aguardando nova tentativa; Quest liberada"
+        return
+    end
+
+    local folder = pastaFrutas()
+    if alvoFruta and (not folder or not alvoFruta:IsDescendantOf(folder)) then
+        if frutaNoInventario(alvoFruta, nomeFrutaAtual) then
+            contadorFrutas += 1
+            falhasFrutas = 0
+            statusFruta = "Fruta adquirida: " .. tostring(nomeFrutaAtual)
+            finalizarTentativaFruta(false, 1)
+        else
+            statusFruta = "Fruta desapareceu do mapa"
+            finalizarTentativaFruta(false, 2)
+        end
+        return
+    end
+
+    if alvoFruta and (not frutaValida(alvoFruta) or not handleFruta(alvoFruta)) then
+        finalizarTentativaFruta(true, 0)
+        return
+    end
+
+    if not alvoFruta then
+        alvoFruta = encontrarFruta(root)
+        if not alvoFruta then
+            frutaOcupada = false
+            statusFruta = "Sem frutas elegíveis; Auto Quest continua"
+            return
+        end
+        nomeFrutaAtual = nomeDaFruta(alvoFruta)
+        inicioTentativaFruta = agora
+        ultimoProgressoFruta = agora
+        ultimoContatoFruta = 0
+        distanciaAnteriorFruta = math.huge
+        frutaTPFeito = false
+        faseFruta = "Selecionada"
+        frutaOcupada = true
+        if rota then liberarVoo() end
+    end
+
+    frutaOcupada = true
+    status = "Buscando fruta: " .. tostring(nomeFrutaAtual)
+    local handle = handleFruta(alvoFruta)
+    if not handle then finalizarTentativaFruta(true, 0); return end
+
+    local distancia = (root.Position - handle.Position).Magnitude
+    if distancia < distanciaAnteriorFruta - 3 then
+        ultimoProgressoFruta = agora
+    end
+    distanciaAnteriorFruta = distancia
+
+    local limite = math.clamp(distancia / math.max(modo.Velocidade, 50) * 2 + 8, 10, 40)
+    if agora - inicioTentativaFruta > limite
+        or (agora - ultimoProgressoFruta > 5 and distancia > 12)
+        or (distancia <= 12 and agora - inicioTentativaFruta > 7) then
+        statusFruta = "Não foi possível coletar " .. tostring(nomeFrutaAtual) .. "; Quest liberada"
+        finalizarTentativaFruta(true, 0)
+        return
+    end
+
+    coletarFruta(alvoFruta)
+end
+
+local function definirFarmFruta(v)
+    local novo = toggle(v, State.AutoFarmFruit)
+    if novo == State.AutoFarmFruit then return end
+    State.AutoFarmFruit = novo
+    finalizarTentativaFruta(false, 0)
+    cooldownFrutasAte = 0
+    falhasFrutas = 0
+    ultimaVarreduraFrutas = 0
+    if novo then
+        statusFruta = "Procurando frutas escolhidas"
+    else
+        statusFruta = "Desligado"
+        if State.AutoFarmQuest then ultimaQuest = 0 end
+    end
+end
+
+local function definirESPFruta(v)
+    State.FruitESP=toggle(v,State.FruitESP)
+    if not State.FruitESP then limparFrutasESPGeral() end
+end
+
+local function definirStoreFruta(v)
+    State.AutoStoreFruit=toggle(v,State.AutoStoreFruit)
+    ultimaLojaFruta=0
+end
+
+local function mudarAutoStats(v)
+    State.AutoStats=toggle(v,State.AutoStats)
+    ultimoUpgradeStats=0
+    statusStats=State.AutoStats and "Ativado" or "Desligado"
+end
+local function escolherStat(v)
+    if type(v)=="table" then v=v.Name or v.Value end
+    if type(v)~="string" then return end
+    for _,nome in ipairs(STATS_NAMES) do
+        if v==nome then statSelecionado=v;ultimoUpgradeStats=0;return end
+    end
+end
+local function atualizarAutoStats()
+    if not State.AutoStats or not running() then return end
+    if os.clock()-ultimoUpgradeStats<2.5 then return end
+    ultimoUpgradeStats=os.clock()
+    local d=lerDados()
+    local stat=d and d.Statistics
+    local bal=mainModulo and mainModulo.BalancingFeatures
+    local network=dadosModulo and dadosModulo.Network
+    if type(stat)~="table" or not bal or not network or type(network.FireServer)~="function" then
+        statusStats="Dados de Stats indisponíveis"
+        return
+    end
+    local nivel=tonumber(stat.Level)
+    local porNivel=tonumber(bal.PointsPerLevel)
+    local limite=tonumber(bal.MaxLevel)
+    if not nivel or not porNivel or porNivel<=0 or not limite then
+        statusStats="Limites de Stats indisponíveis"
+        return
+    end
+    local total=0
+    for _,nome in ipairs(STATS_NAMES) do
+        total+=tonumber(stat[nome]) or 1
+    end
+    local gastos=math.max(0,total-#STATS_NAMES)
+    local disponiveis=math.max(0,math.floor((nivel-1)*porNivel-gastos))
+    local atual=tonumber(stat[statSelecionado]) or 1
+    local quantidade=math.min(disponiveis,math.max(0,math.floor(limite-atual)))
+    if quantidade<1 then
+        statusStats=disponiveis==0 and "Sem pontos disponíveis" or (statSelecionado.." no limite")
+        return
+    end
+    local ok,erro=pcall(function()
+        network:FireServer("StatisticsData","UpgradeStats",{[statSelecionado]=quantidade})
+    end)
+    if ok then
+        ultimaQuantidadeStats=quantidade
+        statusStats="Enviado: "..quantidade.." em "..statSelecionado
+    else
+        statusStats="Erro: "..tostring(erro)
+    end
+end
+local function mudarAutoFishing(v)
+    State.AutoFishing=toggle(v,State.AutoFishing)
+    statusPesca=State.AutoFishing and "Aguardando minigame" or "Desligado"
+    if not State.AutoFishing then pescandoAgora=false;bloquearAtePesca=0 end
+end
+local function mudarAutoCastFishing(v)
+    State.AutoCastFishing=toggle(v,State.AutoCastFishing)
+    ultimoLancamentoPesca=0
+end
+local function limparConexoesPesca()
+    for _,c in ipairs(conexoesPesca) do pcall(function() c:Disconnect() end) end
+    table.clear(conexoesPesca)
+    pescaHUD,pescaPeixe,pescaControle=nil,nil,nil
+end
+local function obterFishingHUD()
+    if pescaHUD and pescaHUD.Parent then return pescaHUD end
+    local pg=player:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local screen=pg:FindFirstChild("ScreenGuis")
+    local main=screen and screen:FindFirstChild("MainUI")
+    local mini=main and main:FindFirstChild("MinigamesHUD")
+    local hud=mini and mini:FindFirstChild("Fishing")
+    if hud then return hud end
+    for _,obj in ipairs(pg:GetDescendants()) do
+        if obj.Name=="Fishing" and obj:FindFirstChild("GameplayElements") then return obj end
+    end
+    return nil
+end
+local function sincronizarBarraVerde()
+    if not State.AutoFishing or not running() then return end
+    local hud=pescaHUD
+    local peixe=pescaPeixe
+    local controle=pescaControle
+    if not hud or not hud.Parent or not hud.Visible or not peixe or not peixe.Parent or not controle or not controle.Parent then return end
+    local y=math.clamp(peixe.Position.Y.Scale,0.18,0.82)
+    local p=controle.Position
+    if math.abs(p.Y.Scale-y)>0.00001 or p.Y.Offset~=0 then
+        controle.Position=UDim2.new(p.X.Scale,p.X.Offset,y,0)
+    end
+    lastFishY=y
+    statusPesca="Barra acompanhando peixe"
+end
+local function monitorarBarraPesca()
+    if not State.AutoFishing then
+        if pescaHUD then limparConexoesPesca() end
+        pescandoAgora=false
+        return
+    end
+    local hud=obterFishingHUD()
+    if hud~=pescaHUD or (hud and (not pescaPeixe or not pescaControle)) then
+        limparConexoesPesca()
+        pescaHUD=hud
+        local gameplay=hud and hud:FindFirstChild("GameplayElements")
+        pescaPeixe=gameplay and gameplay:FindFirstChild("Fish")
+        pescaControle=gameplay and gameplay:FindFirstChild("Control")
+        if pescaPeixe and pescaControle then
+            table.insert(conexoesPesca,pescaPeixe:GetPropertyChangedSignal("Position"):Connect(sincronizarBarraVerde))
+            table.insert(conexoesPesca,pescaControle:GetPropertyChangedSignal("Position"):Connect(sincronizarBarraVerde))
+        end
+    end
+    local visivel=pescaHUD and pescaHUD.Parent and pescaHUD.Visible
+    local estavaPescando=pescandoAgora
+    pescandoAgora=(visivel==true or os.clock()<bloquearAtePesca)
+    if visivel then
+        if not estavaPescando then liberarVoo() end
+        sincronizarBarraVerde()
+    elseif not pescandoAgora then
+        statusPesca=pescaHUD and "Aguardando peixe morder" or "HUD de pesca não carregado"
+    end
+end
+local function encontrarVaraPesca()
+    local char=player.Character
+    local mochila=player:FindFirstChildOfClass("Backpack")
+    for _,container in ipairs({char,mochila}) do
+        if container then
+            for _,item in ipairs(container:GetChildren()) do
+                if item:IsA("Tool") then
+                    local n=item.Name:lower()
+                    if n:find("fishing",1,true) and (n:find("rod",1,true) or n:find("road",1,true)) then
+                        return item
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+local function atualizarLancamentoPesca()
+    if not State.AutoFishing or not State.AutoCastFishing or not running() then return end
+    if pescaHUD and pescaHUD.Parent and pescaHUD.Visible then return end
+    if os.clock()<bloquearAtePesca or os.clock()-ultimoLancamentoPesca<8 then return end
+    local _,root,hum=character()
+    if not root or not hum or hum.Health<=0 or frutaOcupada then return end
+    local vara=encontrarVaraPesca()
+    if not vara then statusPesca="Fishing Rod não encontrada";return end
+    ultimoLancamentoPesca=os.clock()
+    bloquearAtePesca=os.clock()+1.5
+    pescandoAgora=true
+    liberarVoo()
+    if vara.Parent~=player.Character then
+        pcall(function() hum:EquipTool(vara) end)
+        task.wait(0.15)
+    end
+    if vara.Parent==player.Character then
+        local ok=pcall(function() vara:Activate() end)
+        statusPesca=ok and "Lançando vara; aguardando peixe" or "Falha ao lançar vara"
+    else
+        statusPesca="Não foi possível equipar vara"
+    end
+end
+local function parar()
+    State.AutoFarmQuest=false
+    State.AutoFarmFruit=false
+    frutaOcupada=false
+    State.FruitESP=false
+    State.AutoStoreFruit=false
+    State.AutoStats=false
+    State.AutoFishing=false
+    State.AutoCastFishing=false
+    pescandoAgora=false
+    limparConexoesPesca()
+    loopId+=1
+    liberarVoo()
+    if limparFrutasESPGeral then limparFrutasESPGeral() end
+    if afkConn then afkConn:Disconnect();afkConn=nil end
+    for _,c in ipairs(conexoes) do pcall(function() c:Disconnect() end) end
+    table.clear(conexoes)
+    for hum,data in pairs(origHum) do
+        if hum.Parent then
+            pcall(function()
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown,data.fall)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,data.rag)
+            end)
+        end
+    end
+    if running() then env.GRHubRun=runId+1 end
+end
+env.GRHubStop=parar
+connect(QuestEvent.OnClientEvent,function(acao,nome,expira)
+    if acao=="RepeatOffered" then repeatOffer={name=nome,expires=expira} end
+end)
+connect(player.CharacterAdded,function(char)
+    liberarVoo();limparAlvo()
+    ultimaBusca=0
+    local hum=char:WaitForChild("Humanoid",10)
+    if running() then configurarHum(hum) end
+end)
+local ultimoErroFly=0
+connect(RunService.Heartbeat,function(dt)
+    if (State.AutoFarmQuest or State.AutoFarmFruit) and running() then
+        local ok,err=pcall(atualizarVoo,dt)
+        if not ok then
+            if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
+            liberarVoo()
+        end
+    end
+end)
+task.spawn(function()
+    while running() do
+        local ok,erro=pcall(function()
+            if State.AutoFarmFruit or State.FruitESP then
+                atualizarListaFrutas()
+            end
+            if State.FruitESP then atualizarESP() end
+            if State.AutoFarmFruit then atualizarFarmFruta() end
+            if State.AutoStoreFruit then guardarFruta() end
+        end)
+        if not ok and os.clock()-ultimoErroFruta>3 then
+            ultimoErroFruta=os.clock()
+            warn("[GR Hub Fruits]",erro)
+            statusFruta="Erro: "..tostring(erro)
+        end
+        task.wait(0.25)
+    end
+    limparFrutasESPGeral()
+end)
+
+connect(RunService.RenderStepped,sincronizarBarraVerde)
+task.spawn(function()
+    while running() do
+        local ok,erro=pcall(function()
+            monitorarBarraPesca()
+            atualizarAutoStats()
+            atualizarLancamentoPesca()
+        end)
+        if not ok then
+            if State.AutoFishing then statusPesca="Erro: "..tostring(erro) end
+            warn("[GR Hub V7.8 Fishing/Stats]",erro)
+        end
+        task.wait(0.15)
+    end
+    limparConexoesPesca()
+end)
+
+local function copiarDebug()
+    local d=lerDados()
+    local _,root=character()
+    local atual=questAtiva(d)
+    local wanted=questPorNivel(lerNivel(d))
+    local t={
+        "GR HUB V7.8 - STATS & FISHING",
+        "Status: "..status,
+        "Nivel: "..tostring(lerNivel(d)),
+        "Quests: "..#CAMPANHAS,
+        "Quest ativa: "..tostring(atual and atual.questName),
+        "Quest desejada: "..tostring(wanted and wanted.questName),
+        "Campanha: "..tostring(campanha and campanha.questName),
+        "Objetivo: "..tostring(objetivo),
+        "Tipo de Tool escolhido: "..tipoToolSelecionado,
+        "Auto Stats: "..tostring(State.AutoStats),
+        "Stat escolhida: "..statSelecionado,
+        "Status Stats: "..statusStats,
+        "Última distribuição: "..tostring(ultimaQuantidadeStats),
+        "Auto Fishing: "..tostring(State.AutoFishing),
+        "Auto Lançar Vara: "..tostring(State.AutoCastFishing),
+        "Pescando agora: "..tostring(pescandoAgora),
+        "Status Fishing: "..statusPesca,
+        "Posição da barra de pesca: "..tostring(lastFishY),
+        "Auto Fruit: "..tostring(State.AutoFarmFruit),
+        "Fruit ESP: "..tostring(State.FruitESP),
+        "Auto Store Fruit: "..tostring(State.AutoStoreFruit),
+        "Frutas selecionadas: "..table.concat((function()
+            local nomes={} for _,n in ipairs(FRUIT_NAMES) do if frutasSelecionadas[n] then table.insert(nomes,n) end end
+            return nomes
+        end)(),", "),
+        "Fruta alvo: "..tostring(nomeFrutaAtual),
+        "Coletando fruta agora: "..tostring(frutaOcupada),
+        "Etapa da fruta: "..faseFruta,
+        "Detalhe Auto Fruit: "..statusFruta,
+        "Auto Quest liberado: "..tostring(not frutaOcupada),
+        "Frutas encontradas: "..tostring(#frutasVisiveis),
+        "Frutas recolhidas nesta sessão: "..tostring(contadorFrutas),
+        "Tool equipada: "..tostring((player.Character and player.Character:FindFirstChildWhichIsA("Tool")) and player.Character:FindFirstChildWhichIsA("Tool").Name or "Nenhuma"),
+        "Alvo: "..tostring(alvo and alvo.Name),
+        "NPC: "..tostring(campanha and campanha.giver),
+        "CurrentLocation: "..tostring(localAtual()),
+        "Elysium_Teleporting: "..tostring(player:GetAttribute("Elysium_Teleporting")),
+        "Dentro do Vulcao: "..tostring(dentroVulcao()),
+        "Porta: "..motivoPorta,
+        "Entrada encontrada: "..tostring(encontrarPortaVulcao("VolcanoInterior","Enter")~=nil),
+        "Posicao: "..tostring(root and root.Position),
+        "Destino: "..tostring(rota and rota.destino),
+        "Fase: "..faseVoo,
+        "Velocidade: "..tostring(modo.Velocidade),
+        "Altura de voo: "..tostring(alturaVoo),
+        "Rotina de voo: "..tostring(bodyVelocity~=nil),
+        "Dados disponiveis: "..tostring(d~=nil),
+        "Inimigos no cache: "..#indexInimigos,
+        "Inimigos que batem nome: "..debugBusca.correspondentes,
+        "Inimigos validos: "..debugBusca.validos,
+        "Rejeitados sem Root: "..debugBusca.semRoot,
+        "Rejeitados mortos: "..debugBusca.mortos,
+        "Rejeitados Render=false: "..debugBusca.renderFalse,
+        "Rejeitados blacklist: "..debugBusca.blacklist,
+        "Pastas analisadas: "..debugBusca.fonte,
+        "Marcador do grupo: "..debugBusca.grupo,
+        "Cliente PrivateAreas: "..tostring(privateClient~=nil),
+        "EXEMPLOS DE NOMES:"
+    }
+    for _,s in ipairs(debugBusca.exemplos) do table.insert(t,s) end
+    table.insert(t,"HUD:")
+    for _,s in ipairs(lerLabels()) do table.insert(t,s) end
+    local result=table.concat(t,"\n")
+    print(result)
+    if setclipboard then pcall(setclipboard,result) end
+end
+
+env.GRHub=nil
+local ok,erro=pcall(function()
+    local source=game:HttpGet(INTERFACE_URL)
+    if not source or source=="" then error("Interface vazia") end
+    assert(loadstring(source))()
+end)
+if not ok then warn("[GR Hub] Erro na interface:",erro);parar();return end
+local inicio=os.clock()
+while not env.GRHub and os.clock()-inicio<5 do task.wait(0.05) end
+local Hub=env.GRHub
+if not Hub then warn("[GR Hub] Biblioteca não expôs GRHub");parar();return end
+Hub.AddTab("Main","Main","rbxassetid://78780430891192")
+Hub.AddTab("Player","Player","rbxassetid://6031763426")
+Hub.AddTab("Fruits","Fruits","grape")
+Hub.AddTab("Fishing","Fishing","fish")
+Hub.AddTab("Config","Config","rbxassetid://6031280882")
+local farm=Hub.CreateSection("Main","AUTO FARM")
+Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
+Hub.CreateToggle(farm,"Auto Farm Quest",definirFarm)
+local secFrutas=Hub.CreateSection("Fruits","AUTO FRUIT")
+if type(Hub.CreateMultiDropdown)=="function" then
+    Hub.CreateMultiDropdown(secFrutas,"Frutas para pegar",FRUIT_NAMES,setFrutasEscolhidas,FRUIT_NAMES)
+else
+    local escolhas={"Todas"}
+    for _,n in ipairs(FRUIT_NAMES) do table.insert(escolhas,n) end
+    Hub.CreateDropdown(secFrutas,"Fruta alvo",escolhas,function(v)
+        if v=="Todas" then setFrutasEscolhidas(FRUIT_NAMES)
+        else setFrutasEscolhidas({v}) end
+    end)
+end
+Hub.CreateToggle(secFrutas,"Auto Farm Fruit (TP)",definirFarmFruta)
+Hub.CreateToggle(secFrutas,"Fruit ESP",definirESPFruta)
+Hub.CreateToggle(secFrutas,"Auto Store Fruit",definirStoreFruta)
+local secPesca=Hub.CreateSection("Fishing","AUTO FISHING")
+Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
+Hub.CreateToggle(secPesca,"Auto Lançar Vara",mudarAutoCastFishing)
+local pl=Hub.CreateSection("Player","AUTO STATS")
+Hub.CreateDropdown(pl,"Selecionar Stat",STATS_NAMES,escolherStat)
+Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
+local reset=Hub.CreateSection("Player","PERSONAGEM")
+Hub.CreateButton(reset,"Resetar Personagem",function()
+    liberarVoo()
+    local _,_,hum=character()
+    if hum then hum.Health=0 end
+end)
+local cfg=Hub.CreateSection("Config","GERAL")
+local togAnti=Hub.CreateToggle(cfg,"Anti-Queda",antiQueda)
+local togRepeat=Hub.CreateToggle(cfg,"Auto Repeat",function(v) State.AutoRepeat=toggle(v,State.AutoRepeat) end)
+Hub.CreateToggle(cfg,"Anti-AFK",antiAfk)
+Hub.CreateToggle(cfg,"Abandonar outra quest",function(v) State.AbandonarOutra=toggle(v,State.AbandonarOutra) end)
+local mov=Hub.CreateSection("Config","MOVIMENTAÇÃO FLY")
+Hub.CreateDropdown(mov,"Velocidade",MODOS,function(v) if type(v)=="table" and type(v.Velocidade)=="number" then modo=v end end)
+Hub.CreateDropdown(mov,"Distância do inimigo",ALTURAS,function(v) if type(v)=="table" and type(v.Valor)=="number" then alturaInimigo=v.Valor end end)
+Hub.CreateDropdown(mov,"Altura do voo",ALTURAS_VOO,function(v) if type(v)=="table" and type(v.Valor)=="number" then alturaVoo=v.Valor end end)
+local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
+Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
+antiQueda(true)
+State.AutoRepeat=true
+print("[GR Hub V7.8] Auto Stats e Auto Fishing (barra verde acompanha o peixe)")
