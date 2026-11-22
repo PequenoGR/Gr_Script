@@ -160,17 +160,28 @@ for _,group in pairs(catalog) do
 end
 local aliases={main="home",house="home",combat="swords",combate="swords",fruits="grape",fruit="grape",fruta="grape",frutas="grape",inventory="backpack",inventario="backpack",player="user",jogador="user",teleport="map-pin",quests="scroll",quest="scroll",shop="shopping-cart",config="settings",auto="bot",farm="bot",autofarm="bot",visual="eye",esp="eye",zap="electricity",footprints="move",pesca="anchor",boss="crown",icons="layout-grid",icon="layout-grid"}
 for k,v in pairs(aliases) do Icons[k]=Icons[v] end
-Icons.fish="rbxassetid://1160001531"
+Icons.fish="emoji:🐟"
 Icons.fishing=Icons.fish
 Icons.peixes=Icons.fish
+Icons.pesca=Icons.fish
 local function getIcon(value)
     if value==nil or value=="" then return nil end
     local raw=tostring(value)
+    if raw:sub(1,6)=="emoji:" then return raw end
     if raw:match("^%d+$") then return "rbxassetid://"..raw end
     return Icons[normalize(raw):gsub("^lucide%-","")] or (raw:match("^rbxasset") and raw) or (raw:match("^https?://") and raw) or nil
 end
 local function img(parent,id,props)
-    local p={BackgroundTransparency=1,Image=getIcon(id) or "",ImageColor3="white",ScaleType=Enum.ScaleType.Fit}
+    local resolved=getIcon(id)
+    if resolved and resolved:sub(1,6)=="emoji:" then
+        local p={BackgroundTransparency=1,Text=resolved:sub(7),TextScaled=true,TextColor3="white",Font=font}
+        for k,v in pairs(props or {}) do
+            if k=="ImageColor3" then p.TextColor3=v
+            elseif k~="Image" and k~="ScaleType" then p[k]=v end
+        end
+        return create("TextLabel",parent,p)
+    end
+    local p={BackgroundTransparency=1,Image=resolved or "",ImageColor3="white",ScaleType=Enum.ScaleType.Fit}
     for k,v in pairs(props or {}) do p[k]=v end
     return create("ImageLabel",parent,p)
 end
@@ -250,7 +261,9 @@ local function showPage(name)
         tween(b,.2,{BackgroundColor3=a and "surface" or "side"})
         tween(b.TitleText,.2,{TextColor3=a and "yellow" or "gray"})
         local i=b:FindFirstChild("TabIcon")
-        if i then tween(i,.2,{ImageColor3=a and "yellow" or "white"}) end
+        if i then
+            tween(i,.2,{[i:IsA("TextLabel") and "TextColor3" or "ImageColor3"]=a and "yellow" or "white"})
+        end
     end
 end
 local function setVisible(o,v) if saved[o]==nil then saved[o]=o.Visible end; o.Visible=v end
@@ -328,9 +341,16 @@ end
 function API.SetTabIcon(name,icon)
     local b=navButtons[name]; if not b then return end
     local id=getIcon(icon); local i=b:FindFirstChild("TabIcon")
+    if i and id and (i:IsA("TextLabel")~=(id:sub(1,6)=="emoji:")) then i:Destroy();i=nil end
     if not id then if i then i:Destroy() end else
         i=i or img(b,id,{Name="TabIcon",Size=UDim2.fromOffset(17,17),Position=UDim2.new(0,8,.5,-8.5)})
-        i.Image=id; paint(i,"ImageColor3",activeTab==name and "yellow" or "white")
+        if i:IsA("TextLabel") then
+            i.Text=id:sub(7)
+            paint(i,"TextColor3",activeTab==name and "yellow" or "white")
+        else
+            i.Image=id
+            paint(i,"ImageColor3",activeTab==name and "yellow" or "white")
+        end
     end
     b.TitleText.Size=UDim2.new(1,id and -30 or -16,1,0); b.TitleText.Position=UDim2.fromOffset(id and 28 or 8,0)
 end
