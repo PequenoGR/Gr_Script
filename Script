@@ -779,6 +779,7 @@ local function definirDestino(destino,chave)
     end
 end
 local function atualizarVoo(dt)
+    if os.clock()<(FeatureState.islandUntil or 0) then return end
     if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
@@ -1025,7 +1026,7 @@ local function buscarEAtacar()
     definirDestino(er.Position+Vector3.new(0,alturaInimigo,0),alvo)
 end
 local function atacar()
-    if not State.AutoFarmQuest or State.AutoSeaBeast or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
+    if not State.AutoFarmQuest or State.AutoSeaBeast or os.clock()<(FeatureState.islandUntil or 0) or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
     if emTransicao() or (campanha and campanha.ilha=="Volcano Island" and not dentroVulcao()) then return end
     local _,root,hum=character()
     if not root or not hum or hum.Health<=0 then return end
@@ -1055,7 +1056,7 @@ local function definirFarm(v)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
             local ok,err=pcall(function()
-                if not State.AutoSeaBeast and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
+                if os.clock()>=(FeatureState.islandUntil or 0) and not State.AutoSeaBeast and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
                     if os.clock()-ultimaQuest>0.3 then ultimaQuest=os.clock();advanceQuest() end
                     buscarEAtacar()
                 end
@@ -1407,6 +1408,7 @@ local function guardarFruta()
 end
 
 local function atualizarFarmFruta()
+    if os.clock()<(FeatureState.islandUntil or 0) then return end
     if State.AutoSeaBeast then
         FeatureState.frutaOcupada=false
         return
@@ -1674,7 +1676,7 @@ local function encontrarVaraPesca()
     return nil
 end
 local function atualizarLancamentoPesca()
-    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or not running() then return end
+    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
     if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible then return end
     if os.clock()<FeatureState.bloquearAtePesca or os.clock()-FeatureState.ultimoLancamentoPesca<8 then return end
     local _,root,hum=character()
@@ -2040,6 +2042,7 @@ local Sea = (function()
     local function tick()
         scan()
         draw()
+        if os.clock()<(FeatureState.islandUntil or 0) then return end
         if not State.AutoSeaBeast then
             if S.target then S.target=nil; S.status="Desligado" end
             return
@@ -2158,13 +2161,147 @@ local Sea = (function()
     return S
 end)()
 
+
+local IslandTeleport = (function()
+    local T = {chosen=nil,options={},status="Pronto"}
+    local function areas()
+        local map=workspace:FindFirstChild("Map")
+        return map and map:FindFirstChild("Areas")
+    end
+    local function add(names,seen,name,level)
+        if type(name)~="string" or name=="" then return end
+        if seen[name] then return end
+        seen[name]=true
+        table.insert(names,{Name=name,Level=tonumber(level) or 9999})
+    end
+    local function build()
+        local names,seen={},{}
+        for _,quest in ipairs(CAMPANHAS) do
+            add(names,seen,quest.ilha,quest.minLevel)
+        end
+        local folder=areas()
+        if folder then
+            for _,obj in ipairs(folder:GetChildren()) do
+                if obj:IsA("Folder") and obj:GetAttribute("MapImage")~=nil then
+                    add(names,seen,obj.Name,obj:GetAttribute("Level"))
+                end
+            end
+        end
+        table.sort(names,function(a,b)
+            if a.Level==b.Level then return a.Name<b.Name end
+            return a.Level<b.Level
+        end)
+        local result={}
+        for _,item in ipairs(names) do table.insert(result,item.Name) end
+        return result
+    end
+    T.options=build()
+    T.chosen=T.options[1]
+    function T.choose(v)
+        if type(v)=="table" then v=v.Name or v.Value or v.Valor end
+        if type(v)=="string" and v~="" then T.chosen=v end
+    end
+    local function findSpawn(area,center)
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local data=ignore and ignore:FindFirstChild("Data")
+        local spawns=data and data:FindFirstChild("Spawns")
+        local folder=spawns and spawns:FindFirstChild("PlayerSpawns")
+        if not folder then return nil end
+        local bounds=area:GetAttribute("MapLand")
+        local altitude=area:GetAttribute("MapAltitude")
+        local nearest,best=nil,math.huge
+        for _,spawn in ipairs(folder:GetChildren()) do
+            local pos=spawn:GetAttribute("CheckpointPosition")
+            if typeof(pos)=="Vector3" then
+                local ok=typeof(bounds)=="Rect"
+                    and pos.X-center.X>=bounds.Min.X-100
+                    and pos.X-center.X<=bounds.Max.X+100
+                    and pos.Z-center.Z>=bounds.Min.Y-100
+                    and pos.Z-center.Z<=bounds.Max.Y+100
+                if not ok and typeof(bounds)~="Rect" then
+                    ok=(Vector2.new(pos.X-center.X,pos.Z-center.Z)).Magnitude<450
+                end
+                if ok and (type(altitude)~="number" or math.abs(pos.Y-altitude)<1000) then
+                    local dist=(Vector2.new(pos.X-center.X,pos.Z-center.Z)).Magnitude
+                    if dist<best then best=dist;nearest=pos end
+                end
+            end
+        end
+        return nearest
+    end
+    local function ground(area,center)
+        local map=workspace:FindFirstChild("Map")
+        if not map then return nil end
+        local altitude=area:GetAttribute("MapAltitude")
+        local baseY=math.max(center.Y,type(altitude)=="number" and altitude or center.Y)
+        local params=RaycastParams.new()
+        params.FilterType=Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances={map}
+        params.IgnoreWater=true
+        local origin=Vector3.new(center.X,baseY+1200,center.Z)
+        local hit=workspace:Raycast(origin,Vector3.new(0,-2400,0),params)
+        if hit and hit.Position.Y> -200 then return hit.Position end
+        return nil
+    end
+    function T.go()
+        local selected=T.chosen
+        local folder=areas()
+        local area=folder and folder:FindFirstChild(selected or "")
+        if not area then
+            T.status="Ilha não carregada: "..tostring(selected)
+            warn("[GR Hub Teleport]",T.status)
+            return
+        end
+        local center=area:GetAttribute("MapCenter")
+        if typeof(center)~="Vector3" then
+            T.status="MapCenter indisponível: "..tostring(selected)
+            warn("[GR Hub Teleport]",T.status)
+            return
+        end
+        if emTransicao() then
+            T.status="Aguardando transição do jogo"
+            warn("[GR Hub Teleport]",T.status)
+            return
+        end
+        local char,root,hum=character()
+        if not char or not root or not hum or hum.Health<=0 then
+            T.status="Personagem indisponível"
+            return
+        end
+        local point=findSpawn(area,center) or ground(area,center)
+        if not point then
+            T.status="Sem spawn ou solo seguro: "..tostring(selected)
+            warn("[GR Hub Teleport]",T.status)
+            return
+        end
+        FeatureState.islandUntil=os.clock()+6
+        FeatureState.frutaOcupada=false
+        liberarVoo()
+        local ok,err=pcall(function()
+            char:PivotTo(CFrame.new(point+Vector3.new(0,4,0))*root.CFrame.Rotation)
+            root.AssemblyLinearVelocity=Vector3.zero
+            root.AssemblyAngularVelocity=Vector3.zero
+        end)
+        if ok then
+            T.status="Teleporte solicitado: "..tostring(selected)
+            print("[GR Hub]",T.status)
+        else
+            T.status="Falha no TP: "..tostring(err)
+            warn("[GR Hub Teleport]",T.status)
+        end
+    end
+    return T
+end)()
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V7.9 - SEA BEAST",
+        "GR HUB V8.0 - ISLAND TELEPORT",
+        "Ilha escolhida: "..tostring(IslandTeleport.chosen),
+        "Ilha TP: "..tostring(IslandTeleport.status),
         "Auto Sea Beast: "..tostring(State.AutoSeaBeast),
         "Sea Beast ESP: "..tostring(State.SeaBeastESP),
         "Tipo de Sea Beast: "..tostring(Sea.mode),
@@ -2256,6 +2393,7 @@ Hub.AddTab("Player","Player","rbxassetid://6031763426")
 Hub.AddTab("Fruits","Fruits","grape")
 Hub.AddTab("Fishing","Fishing","fish")
 Hub.AddTab("Sea","Sea","waves")
+Hub.AddTab("Teleport","Teleport","map-pin")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
@@ -2281,6 +2419,9 @@ local secSea=Hub.CreateSection("Sea","SEA BEAST")
 Hub.CreateDropdown(secSea,"Tipo de Sea Beast",{"Todos","Normal","Ancestral"},Sea.setMode)
 Hub.CreateToggle(secSea,"Sea Beast ESP",Sea.setESP)
 Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
+local secTP=Hub.CreateSection("Teleport","ILHAS - TELEPORTE")
+Hub.CreateDropdown(secTP,"Selecionar ilha",IslandTeleport.options,IslandTeleport.choose)
+Hub.CreateButton(secTP,"Teleportar para ilha",IslandTeleport.go)
 local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
@@ -2303,6 +2444,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V7.9] Sea Beast Normal/Ancestral, ESP, M1, Skills e Dodge")
+print("[GR Hub V8.0] Teleportar ilhas + Fishing icon; Sea Beast, ESP, Auto Farm mantidos")
 
 end)()
