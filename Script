@@ -779,7 +779,7 @@ local function definirDestino(destino,chave)
     end
 end
 local function atualizarVoo(dt)
-    if not (State.AutoFarmQuest or State.AutoFarmFruit) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1025,7 +1025,7 @@ local function buscarEAtacar()
     definirDestino(er.Position+Vector3.new(0,alturaInimigo,0),alvo)
 end
 local function atacar()
-    if not State.AutoFarmQuest or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
+    if not State.AutoFarmQuest or State.AutoSeaBeast or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
     if emTransicao() or (campanha and campanha.ilha=="Volcano Island" and not dentroVulcao()) then return end
     local _,root,hum=character()
     if not root or not hum or hum.Health<=0 then return end
@@ -1055,7 +1055,7 @@ local function definirFarm(v)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
             local ok,err=pcall(function()
-                if not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
+                if not State.AutoSeaBeast and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
                     if os.clock()-ultimaQuest>0.3 then ultimaQuest=os.clock();advanceQuest() end
                     buscarEAtacar()
                 end
@@ -1066,7 +1066,7 @@ local function definirFarm(v)
     end)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
-            if not FeatureState.pescandoAgora then pcall(atacar) end
+            if not State.AutoSeaBeast and not FeatureState.pescandoAgora then pcall(atacar) end
             task.wait(math.max(modo.Ataque,0.02))
         end
     end)
@@ -1407,6 +1407,10 @@ local function guardarFruta()
 end
 
 local function atualizarFarmFruta()
+    if State.AutoSeaBeast then
+        FeatureState.frutaOcupada=false
+        return
+    end
     if not State.AutoFarmFruit then
         FeatureState.frutaOcupada = false
         return
@@ -1670,7 +1674,7 @@ local function encontrarVaraPesca()
     return nil
 end
 local function atualizarLancamentoPesca()
-    if not State.AutoFishing or not State.AutoCastFishing or not running() then return end
+    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or not running() then return end
     if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible then return end
     if os.clock()<FeatureState.bloquearAtePesca or os.clock()-FeatureState.ultimoLancamentoPesca<8 then return end
     local _,root,hum=character()
@@ -1693,6 +1697,10 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    State.AutoSeaBeast=false
+    State.SeaBeastESP=false
+    if type(env.GRHubSeaCleanup)=="function" then pcall(env.GRHubSeaCleanup) end
+    env.GRHubSeaCleanup=nil
     State.AutoFarmQuest=false
     State.AutoFarmFruit=false
     FeatureState.frutaOcupada=false
@@ -1731,7 +1739,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -1776,13 +1784,389 @@ task.spawn(function()
     limparConexoesPesca()
 end)
 
+
+local Sea = (function()
+    State.AutoSeaBeast = false
+    State.SeaBeastESP = false
+    local S = {
+        mode = "Todos", list = {}, marks = {}, target = nil,
+        status = "Desligado", attack = "-", threat = "-",
+        scanned = 0, lastGlobal = 0, m1 = 0, skill = 0,
+        skillIndex = 0, lastDodge = 0, dodgeUntil = 0,
+        dodgePoint = nil, dodgeSide = 1, lastHealth = nil,
+        eventPart = nil, dead = false, skills = nil
+    }
+    local function kind(m)
+        if not m or not m:IsA("Model") then return nil end
+        local s = tostring(m.Name).." "..tostring(m:GetAttribute("OriginalName") or "").." "..tostring(m:GetAttribute("EnemyName") or "").." "..tostring(m:GetAttribute("BossName") or "")
+        s = s:lower()
+        if s:find("ancestral",1,true) and (s:find("sea beast",1,true) or s:find("abyssal beast",1,true)) then return "Ancestral" end
+        if s:find("sea beast",1,true) or s:find("abyssal beast",1,true) then return "Normal" end
+        return nil
+    end
+    local function part(m)
+        if not m or not m.Parent then return nil end
+        local p = m:FindFirstChild("RootPart",true) or m:FindFirstChild("HumanoidRootPart",true) or m.PrimaryPart
+        if p and p:IsA("BasePart") then return p end
+        return nil
+    end
+    local function alive(m)
+        local p = part(m)
+        if not p then return nil end
+        local h = m:FindFirstChildWhichIsA("Humanoid",true)
+        if h and h.Health <= 0 then return nil end
+        local health = m:GetAttribute("Health")
+        if type(health)=="number" and health <= 0 then return nil end
+        return p
+    end
+    local function clearMark(m)
+        local a = S.marks[m]
+        if not a then return end
+        S.marks[m] = nil
+        for _,obj in pairs(a) do
+            if obj and obj.Parent then pcall(function() obj:Destroy() end) end
+        end
+    end
+    local function clearESP()
+        for m in pairs(S.marks) do clearMark(m) end
+        if S.eventPart then pcall(function() S.eventPart:Destroy() end); S.eventPart=nil end
+    end
+    local function scan()
+        if os.clock()-S.scanned<3 then return end
+        S.scanned=os.clock()
+        local seen = {}
+        local found = {}
+        local scopes = {}
+        local p = workspace:FindFirstChild("Playability")
+        if p then table.insert(scopes,p) end
+        local ignore = workspace:FindFirstChild("IgnoreList")
+        local int = ignore and ignore:FindFirstChild("Int")
+        if int then table.insert(scopes,int) end
+        if #scopes==0 or (#S.list==0 and os.clock()-S.lastGlobal>8) then
+            table.insert(scopes,workspace)
+            S.lastGlobal=os.clock()
+        end
+        for _,scope in ipairs(scopes) do
+            for _,obj in ipairs(scope:GetDescendants()) do
+                if obj:IsA("Model") and not seen[obj] then
+                    seen[obj]=true
+                    local k=kind(obj)
+                    if k and alive(obj) and not (ignore and obj:IsDescendantOf(ignore:FindFirstChild("Temp") or Instance.new("Folder"))) then
+                        table.insert(found,{model=obj,kind=k})
+                    end
+                end
+            end
+        end
+        S.list=found
+    end
+    local function eventPosition()
+        local p = player:GetAttribute("SeaBeastEvent")
+        if typeof(p)=="Vector3" then return p end
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local marker=ignore and ignore:FindFirstChild("AbyssalBeastEvent")
+        if marker and marker:IsA("BasePart") then return marker.Position end
+        return nil
+    end
+    local function draw()
+        if not State.SeaBeastESP then clearESP();return end
+        local seen={}
+        local _,root=character()
+        for _,entry in ipairs(S.list) do
+            local m=entry.model
+            local p=alive(m)
+            if p then
+                seen[m]=true
+                local a=S.marks[m]
+                if not a then
+                    local mark=Instance.new("Highlight")
+                    mark.Name="GR_SeaBeastESP"
+                    mark.Adornee=m
+                    mark.FillTransparency=.82
+                    mark.OutlineTransparency=0
+                    mark.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+                    mark.FillColor=entry.kind=="Ancestral" and Color3.fromRGB(170,70,240) or Color3.fromRGB(35,180,235)
+                    mark.OutlineColor=entry.kind=="Ancestral" and Color3.fromRGB(225,140,255) or Color3.fromRGB(115,235,255)
+                    mark.Parent=m
+                    local gui=Instance.new("BillboardGui")
+                    gui.Name="GR_SeaLabel"
+                    gui.Size=UDim2.fromOffset(190,43)
+                    gui.StudsOffsetWorldSpace=Vector3.new(0,18,0)
+                    gui.AlwaysOnTop=true
+                    gui.Adornee=p
+                    gui.Parent=p
+                    local lab=Instance.new("TextLabel")
+                    lab.Name="Text"
+                    lab.Size=UDim2.fromScale(1,1)
+                    lab.BackgroundColor3=Color3.fromRGB(15,15,20)
+                    lab.BackgroundTransparency=.2
+                    lab.TextColor3=Color3.fromRGB(240,240,240)
+                    lab.TextStrokeTransparency=.7
+                    lab.TextScaled=true
+                    lab.Font=Enum.Font.GothamBold
+                    lab.Parent=gui
+                    local corner=Instance.new("UICorner")
+                    corner.CornerRadius=UDim.new(0,7)
+                    corner.Parent=lab
+                    a={mark,gui}
+                    S.marks[m]=a
+                end
+                if a[2] then
+                    a[2].Adornee=p
+                    local lab=a[2]:FindFirstChild("Text")
+                    if lab then
+                        local dist=root and math.floor((root.Position-p.Position).Magnitude) or 0
+                        lab.Text=(entry.kind=="Ancestral" and "ANCESTRAL SEA BEAST" or "SEA BEAST").."\n"..dist.." studs"
+                    end
+                end
+            end
+        end
+        for m in pairs(S.marks) do if not seen[m] then clearMark(m) end end
+        local pos=eventPosition()
+        if pos then
+            if not S.eventPart then
+                local anchor=Instance.new("Part")
+                anchor.Name="GR_SeaEventMarker"
+                anchor.Anchored=true
+                anchor.CanCollide=false
+                anchor.CanTouch=false
+                anchor.CanQuery=false
+                anchor.Transparency=1
+                anchor.Size=Vector3.one
+                anchor.Parent=workspace
+                local gui=Instance.new("BillboardGui")
+                gui.Size=UDim2.fromOffset(210,35)
+                gui.AlwaysOnTop=true
+                gui.StudsOffsetWorldSpace=Vector3.new(0,12,0)
+                gui.Parent=anchor
+                local t=Instance.new("TextLabel")
+                t.Size=UDim2.fromScale(1,1)
+                t.BackgroundColor3=Color3.fromRGB(25,25,25)
+                t.BackgroundTransparency=.25
+                t.TextColor3=Color3.fromRGB(255,225,100)
+                t.Font=Enum.Font.GothamBold
+                t.TextScaled=true
+                t.Text="SEA BEAST EVENT"
+                t.Parent=gui
+                S.eventPart=anchor
+            end
+            S.eventPart.Position=pos
+        elseif S.eventPart then
+            S.eventPart:Destroy()
+            S.eventPart=nil
+        end
+    end
+    local function choose(root)
+        local closest,dist
+        dist=math.huge
+        for _,entry in ipairs(S.list) do
+            if (S.mode=="Todos" or entry.kind==S.mode) then
+                local p=alive(entry.model)
+                if p then
+                    local d=(p.Position-root.Position).Magnitude
+                    if d<dist then closest=entry.model;dist=d end
+                end
+            end
+        end
+        return closest
+    end
+    local function hazard(m,root,hum)
+        local last=S.lastHealth
+        S.lastHealth=hum.Health
+        if last and hum.Health<last-math.max(12,hum.MaxHealth*.045) then
+            return "Dano recebido"
+        end
+        local dist=(root.Position-m:GetPivot().Position).Magnitude
+        if dist>450 then return nil end
+        local a=m:GetAttribute("CurrentSkill") or m:GetAttribute("Skill") or m:GetAttribute("Action")
+        if type(a)=="string" then
+            local lower=a:lower()
+            for _,word in ipairs({"waterbomb","tornado","roar","bite","tailwhip","leapgrab","dive"}) do
+                if lower:find(word,1,true) then return a end
+            end
+        end
+        local animator=m:FindFirstChildWhichIsA("Animator",true)
+        if animator then
+            for _,track in ipairs(animator:GetPlayingAnimationTracks()) do
+                local name=(track.Name.." "..(track.Animation and track.Animation.Name or "")):lower()
+                for _,word in ipairs({"waterbomb","tornado","roar","bite","tailwhip","leapgrab","dive"}) do
+                    if name:find(word,1,true) then return word end
+                end
+            end
+        end
+        local il=workspace:FindFirstChild("IgnoreList")
+        local tmp=il and il:FindFirstChild("Temp")
+        if tmp then
+            for _,o in ipairs(tmp:GetChildren()) do
+                local n=o.Name:lower()
+                if n:find("waterprojectile",1,true) or n:find("waterbomb",1,true) or n:find("hurricane",1,true) or n:find("tornado",1,true) then
+                    local pos
+                    if o:IsA("BasePart") then pos=o.Position
+                    elseif o:IsA("Model") then pos=o:GetPivot().Position end
+                    if pos and (root.Position-pos).Magnitude<140 then return "Projétil próximo" end
+                end
+            end
+        end
+        return nil
+    end
+    local function skillUse(tool)
+        if not S.skills then
+            local mods=RS:FindFirstChild("Modules")
+            local combat=mods and mods:FindFirstChild("Combat")
+            local ability=combat and combat:FindFirstChild("AbilitySystem")
+            local client=ability and ability:FindFirstChild("AbilitySystem Client")
+            local module=client and client:FindFirstChild("SkillsSystem Client")
+            if module then
+                local ok,r=pcall(require,module)
+                if ok and type(r)=="table" then S.skills=r end
+            end
+        end
+        local skills=S.skills
+        if not skills or not skills.SkillUI or type(skills.SkillUI.RequestMobile)~="function" then return end
+        local keys={"Z","X","C","V","F"}
+        for i=1,#keys do
+            S.skillIndex=S.skillIndex%#keys+1
+            local key=keys[S.skillIndex]
+            local exists=true
+            if skills.Skills and type(skills.Skills.GetByKey)=="function" then
+                local ok,skill=pcall(function() return skills.Skills:GetByKey(tool.Name,key) end)
+                exists=ok and skill~=nil
+            end
+            if exists then
+                local ok=pcall(function() skills.SkillUI.RequestMobile(key) end)
+                if ok then S.attack="Skill "..key;return end
+            end
+        end
+    end
+    local function tick()
+        scan()
+        draw()
+        if not State.AutoSeaBeast then
+            if S.target then S.target=nil; S.status="Desligado" end
+            return
+        end
+        if emTransicao() or FeatureState.pescandoAgora then
+            S.status="Aguardando transição ou pesca"
+            return
+        end
+        local char,root,hum=character()
+        if not root or not hum or hum.Health<=0 then S.status="Personagem indisponível";return end
+        local boss=choose(root)
+        if not boss then
+            S.target=nil
+            local pos=eventPosition()
+            if pos then
+                S.status="Indo ao evento Sea Beast"
+                if (root.Position-pos).Magnitude>110 then definirDestino(pos+Vector3.new(0,35,0),"SeaEvent")
+                elseif rota and rota.chave=="SeaEvent" then liberarVoo() end
+            else
+                S.status="Aguardando Sea Beast aparecer"
+                if rota and type(rota.chave)=="string" and rota.chave:sub(1,3)=="Sea" then liberarVoo() end
+            end
+            return
+        end
+        S.target=boss
+        local bp=alive(boss)
+        if not bp then return end
+        local delta=root.Position-bp.Position
+        local flat=Vector3.new(delta.X,0,delta.Z)
+        if flat.Magnitude<.1 then flat=Vector3.new(1,0,0) end
+        local dist=delta.Magnitude
+        local threat=hazard(boss,root,hum)
+        if threat and os.clock()-S.lastDodge>2.8 then
+            S.lastDodge=os.clock()
+            S.dodgeUntil=os.clock()+1.5
+            S.dodgeSide=-S.dodgeSide
+            S.threat=threat
+            local side=Vector3.new(-flat.Z,0,flat.X).Unit*S.dodgeSide
+            S.dodgePoint=root.Position+side*105+Vector3.new(0,55,0)
+        end
+        if os.clock()<S.dodgeUntil and S.dodgePoint then
+            S.status="Desviando: "..S.threat
+            definirDestino(S.dodgePoint,"SeaDodge")
+            if rota and rota.chave=="SeaDodge" then rota.cruzeiro=math.max(root.Position.Y,S.dodgePoint.Y)+8 end
+            return
+        end
+        local goal=bp.Position+flat.Unit*22+Vector3.new(0,16,0)
+        S.status="Atacando "..tostring(kind(boss)).." Sea Beast"
+        if (root.Position-goal).Magnitude>10 then
+            definirDestino(goal,"SeaBoss")
+            if rota and rota.chave=="SeaBoss" and dist<380 then
+                rota.cruzeiro=math.max(root.Position.Y,goal.Y)+12
+            end
+        elseif rota and rota.chave=="SeaBoss" then liberarVoo() end
+        local tool=equiparArma()
+        if not tool then S.attack="Tool não encontrada";return end
+        if dist<80 and os.clock()-S.m1>.25 then
+            S.m1=os.clock()
+            pcall(function() tool:Activate() end)
+            S.attack="M1 "..tool.Name
+        end
+        if dist<190 and os.clock()-S.skill>1.6 then
+            S.skill=os.clock()
+            pcall(skillUse,tool)
+        end
+    end
+    function S.setMode(v)
+        if type(v)=="table" then v=v.Name or v.Value or v.Valor end
+        if v=="Todos" or v=="Normal" or v=="Ancestral" then S.mode=v end
+    end
+    function S.setAuto(v)
+        State.AutoSeaBeast=(v==true)
+        if State.AutoSeaBeast then
+            finalizarTentativaFruta(false,0)
+            S.lastHealth=nil
+            S.status="Procurando Sea Beast"
+            liberarVoo()
+        else
+            S.status="Desligado"
+            S.target=nil
+            if rota and type(rota.chave)=="string" and rota.chave:sub(1,3)=="Sea" then liberarVoo() end
+        end
+    end
+    function S.setESP(v)
+        State.SeaBeastESP=(v==true)
+        S.scanned=0
+        if not v then clearESP() end
+    end
+    function S.cleanup()
+        S.dead=true
+        State.AutoSeaBeast=false
+        State.SeaBeastESP=false
+        clearESP()
+    end
+    env.GRHubSeaCleanup=S.cleanup
+    task.spawn(function()
+        while running() and not S.dead do
+            local ok,err=pcall(tick)
+            if not ok then
+                S.status="Erro: "..tostring(err)
+                if os.clock()-(S.lastError or 0)>5 then
+                    S.lastError=os.clock()
+                    warn("[GR Hub Sea]",err)
+                end
+            end
+            task.wait(State.AutoSeaBeast and .14 or State.SeaBeastESP and .4 or 1)
+        end
+        S.cleanup()
+    end)
+    return S
+end)()
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V7.8 - STATS & FISHING",
+        "GR HUB V7.9 - SEA BEAST",
+        "Auto Sea Beast: "..tostring(State.AutoSeaBeast),
+        "Sea Beast ESP: "..tostring(State.SeaBeastESP),
+        "Tipo de Sea Beast: "..tostring(Sea.mode),
+        "Sea Beast encontrados: "..tostring(#Sea.list),
+        "Sea alvo: "..tostring(Sea.target and Sea.target.Name),
+        "Sea status: "..tostring(Sea.status),
+        "Sea ataque: "..tostring(Sea.attack),
+        "Sea ameaça: "..tostring(Sea.threat),
         "Status: "..status,
         "Nivel: "..tostring(lerNivel(d)),
         "Quests: "..#CAMPANHAS,
@@ -1865,6 +2249,7 @@ Hub.AddTab("Main","Main","rbxassetid://78780430891192")
 Hub.AddTab("Player","Player","rbxassetid://6031763426")
 Hub.AddTab("Fruits","Fruits","grape")
 Hub.AddTab("Fishing","Fishing","fish")
+Hub.AddTab("Sea","Sea","waves")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
@@ -1886,6 +2271,10 @@ Hub.CreateToggle(secFrutas,"Auto Store Fruit",definirStoreFruta)
 local secPesca=Hub.CreateSection("Fishing","AUTO FISHING")
 Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
 Hub.CreateToggle(secPesca,"Auto Lançar Vara",mudarAutoCastFishing)
+local secSea=Hub.CreateSection("Sea","SEA BEAST")
+Hub.CreateDropdown(secSea,"Tipo de Sea Beast",{"Todos","Normal","Ancestral"},Sea.setMode)
+Hub.CreateToggle(secSea,"Sea Beast ESP",Sea.setESP)
+Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
 local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
@@ -1908,6 +2297,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V7.8] Auto Stats e Auto Fishing (barra verde acompanha o peixe)")
+print("[GR Hub V7.9] Sea Beast Normal/Ancestral, ESP, M1, Skills e Dodge")
 
 end)()
