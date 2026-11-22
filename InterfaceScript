@@ -371,13 +371,27 @@ function API.CreateToggle(parent,label,callback,icon,configId)
     local circle=create("Frame",bg,{Size=UDim2.fromOffset(10,10),Position=UDim2.new(0,2,.5,-5),BackgroundColor3="knob",BorderSizePixel=0}); round(circle,20)
     local b=text("TextButton",bg,"",{Size=UDim2.fromScale(1,1),ZIndex=3})
     local active=false
+    local circleTween
     local function setActive(value,notify,restored)
         if type(value)~="boolean" then return end
         active=value
+        if circleTween then circleTween:Cancel() end
         tween(bg,.2,{BackgroundColor3=active and "yellow" or "muted"})
-        tween(circle,.2,{Position=active and UDim2.new(1,-12,.5,-5) or UDim2.new(0,2,.5,-5)})
+        circleTween=tween(circle,.2,{Position=active and UDim2.new(1,-12,.5,-5) or UDim2.new(0,2,.5,-5)})
         if notify then
-            if restored then restoreCallback(row,callback,active) else changeConfig(); if callback then callback(active) end end
+            if restored then
+                restoreCallback(row,callback,active)
+            else
+                changeConfig()
+                if callback then
+                    local state=active
+                    task.defer(function()
+                        if not row.Parent then return end
+                        local ok,err=pcall(callback,state)
+                        if not ok then warn("[GRHub] Toggle callback: "..tostring(err)) end
+                    end)
+                end
+            end
         end
     end
     b.Activated:Connect(function() setActive(not active,true,false) end)
