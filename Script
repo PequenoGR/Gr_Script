@@ -3423,6 +3423,7 @@ local BossFarm = (function()
             FeatureState.bossDodgeSpeed=profile().speed
             B.dodgeUntil=0
             B.dodgePoint=nil
+            if rota and rota.chave=="BossDodge" then liberarVoo() end
         end
     end
     FeatureState.bossDodgeSpeed=740
@@ -3776,15 +3777,15 @@ local BossFarm = (function()
         B.dodgePoint=nil
         if now<B.retreatUntil then
             B.status="Recuo defensivo por pouca vida"
+            definirDestino(B.safePoint or root.Position,"BossDodge")
             return
         end
         local target,canAttack=attackPoint(root,enemy,zones)
         if not canAttack then
             B.status="Aguardando abertura segura no boss"
-            if dangerLevel>0 then
-                local safe=dodgeTarget(root,enemy,zones,true)
-                definirDestino(safe,"BossDodge")
-            end
+            local waitingPoint=root.Position
+            if dangerLevel>0 then waitingPoint=dodgeTarget(root,enemy,zones,true) end
+            definirDestino(waitingPoint,"BossDodge")
             return
         end
         local distance=(root.Position-enemy.Position).Magnitude
@@ -3852,7 +3853,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V9.3 - AUTO BOSS",
+        "GR HUB V10.0 - AUTO BOSS DODGE",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
