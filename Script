@@ -2792,7 +2792,7 @@ end)()
 
 local FruitShopAuto = (function()
     local P={
-        active=false,names={},chosen={},maxPrice=math.huge,keepGold=0,
+        active=false,names={},chosen={},
         allowReplace=false,stock={},stockLoaded=false,status="Desligado",lastFetch=-120,
         attempts=0,purchases=0,requesting=false,stopped=false,
         lastAttempt=0,lastCycle=nil,lastFruit="-",lastPrice=0
@@ -2802,22 +2802,6 @@ local FruitShopAuto = (function()
         if not table.find(P.names,name) then table.insert(P.names,name) end
     end
     table.sort(P.names)
-    P.priceOptions={
-        {Name="Sem limite",Valor=math.huge},
-        {Name="Até 100.000 Gold",Valor=100000},
-        {Name="Até 500.000 Gold",Valor=500000},
-        {Name="Até 1.000.000 Gold",Valor=1000000},
-        {Name="Até 5.000.000 Gold",Valor=5000000},
-        {Name="Até 10.000.000 Gold",Valor=10000000},
-        {Name="Até 50.000.000 Gold",Valor=50000000}
-    }
-    P.reserveOptions={
-        {Name="Sem reserva",Valor=0},
-        {Name="Guardar 100.000 Gold",Valor=100000},
-        {Name="Guardar 500.000 Gold",Valor=500000},
-        {Name="Guardar 1.000.000 Gold",Valor=1000000},
-        {Name="Guardar 5.000.000 Gold",Valor=5000000}
-    }
     local function notify(text)
         print("[GR Hub Fruit Shop] "..tostring(text))
         pcall(function()
@@ -2898,10 +2882,8 @@ local FruitShopAuto = (function()
                     table.insert(skipped,"Fruta já equipada")
                 elseif permanent(offer.name) then
                     table.insert(skipped,"Fruta permanente já possuída")
-                elseif offer.price>P.maxPrice then
-                    table.insert(skipped,"Acima do preço máximo")
-                elseif gold-offer.price<P.keepGold then
-                    table.insert(skipped,"Gold insuficiente/reserva")
+                elseif gold<offer.price then
+                    table.insert(skipped,"Gold insuficiente")
                 else
                     table.insert(offers,offer)
                 end
@@ -2929,14 +2911,6 @@ local FruitShopAuto = (function()
         local count=0
         for _ in pairs(P.chosen) do count+=1 end
         P.status=tostring(count).." frutas selecionadas"
-    end
-    function P.setPrice(v)
-        local value=type(v)=="table" and v.Valor or v
-        if type(value)=="number" and value>0 then P.maxPrice=value end
-    end
-    function P.setReserve(v)
-        local value=type(v)=="table" and v.Valor or v
-        if type(value)=="number" and value>=0 then P.keepGold=value end
     end
     function P.setReplace(v)
         P.allowReplace=(v==true)
@@ -3001,7 +2975,7 @@ local FruitShopAuto = (function()
                 if os.clock()-P.lastAttempt<5 then return end
                 P.lastAttempt=os.clock()
                 local gold=wallet()
-                if not gold or gold-offer.price<P.keepGold or offer.price>P.maxPrice then return end
+                if not gold or gold<offer.price then return end
                 history[cycle]=true
                 P.attempts+=1
                 P.lastCycle=cycle
@@ -3044,8 +3018,8 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V9.0 - LOJA DE FRUTAS",
-        "Auto Comprar Frutas: "..tostring(FruitShopAuto.active),
+        "GR HUB V9.1 - AUTO GACHA",
+        "Auto Gacha: "..tostring(FruitShopAuto.active),
         "Loja: "..tostring(FruitShopAuto.status),
         "Tentativas compra frutas: "..tostring(FruitShopAuto.attempts),
         "Compras confirmadas pelo saldo: "..tostring(FruitShopAuto.purchases),
@@ -3175,7 +3149,7 @@ end
 Hub.CreateToggle(secFrutas,"Auto Farm Fruit (TP)",definirFarmFruta)
 Hub.CreateToggle(secFrutas,"Fruit ESP",definirESPFruta)
 Hub.CreateToggle(secFrutas,"Auto Store Fruit",definirStoreFruta)
-local secShop=Hub.CreateSection("Fruits","LOJA ROTATIVA - AUTO COMPRAR")
+local secShop=Hub.CreateSection("Fruits","AUTO GACHA")
 if type(Hub.CreateMultiDropdown)=="function" then
     Hub.CreateMultiDropdown(secShop,"Frutas para comprar",FruitShopAuto.names,FruitShopAuto.setSelected,{})
 else
@@ -3183,10 +3157,8 @@ else
         FruitShopAuto.setSelected({v})
     end)
 end
-Hub.CreateDropdown(secShop,"Preço máximo",FruitShopAuto.priceOptions,FruitShopAuto.setPrice)
-Hub.CreateDropdown(secShop,"Reservar Gold",FruitShopAuto.reserveOptions,FruitShopAuto.setReserve)
 Hub.CreateToggle(secShop,"Permitir substituir fruta equipada",FruitShopAuto.setReplace)
-Hub.CreateToggle(secShop,"Auto Comprar Frutas",FruitShopAuto.setAuto,nil,false)
+Hub.CreateToggle(secShop,"Auto Gacha",FruitShopAuto.setAuto,nil,false)
 Hub.CreateButton(secShop,"Consultar estoque de frutas",FruitShopAuto.showStock,"search")
 local secPesca=Hub.CreateSection("Fishing","AUTO FISHING")
 Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
@@ -3225,6 +3197,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V9.0] Auto Comprar Frutas RotativeShop com seleção, preço máximo, reserva Gold e estoque")
+print("[GR Hub V9.1] Auto Gacha com seleção de frutas, estoque e saldo disponível")
 
 end)()
