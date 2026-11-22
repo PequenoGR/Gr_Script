@@ -653,6 +653,7 @@ local function configurarHum(hum)
     end)
 end
 local function liberarFisica()
+    if FeatureState.raidHover then pcall(function() FeatureState.raidHover:Destroy() end);FeatureState.raidHover=nil end
     if bodyVelocity then pcall(function() bodyVelocity:Destroy() end);bodyVelocity=nil end
     if bodyGyro then pcall(function() bodyGyro:Destroy() end);bodyGyro=nil end
     if humControlado and humControlado.Parent then
@@ -791,6 +792,29 @@ local function atualizarVoo(dt)
     prepararVoo(char,root,hum)
     if rota~=r then return end
     if os.clock()-ultimaColisao>0.5 then ultimaColisao=os.clock();atualizarColisao(char) end
+    if State.AutoRaid and r.chave=="RaidEnemy" and (root.Position-r.destino).Magnitude<=30 then
+        if not FeatureState.raidHover or FeatureState.raidHover.Parent~=root then
+            if FeatureState.raidHover then pcall(function() FeatureState.raidHover:Destroy() end) end
+            local hold=Instance.new("BodyPosition")
+            hold.Name="GRHubRaidHover"
+            hold.MaxForce=Vector3.new(1e8,1e8,1e8)
+            hold.P=30000
+            hold.D=3500
+            hold.Position=r.destino
+            hold.Parent=root
+            FeatureState.raidHover=hold
+        end
+        FeatureState.raidHover.Position=r.destino
+        if bodyVelocity then bodyVelocity.MaxForce=Vector3.zero end
+        faseVoo="Raid: parado em cima do inimigo"
+        return
+    elseif FeatureState.raidHover then
+        pcall(function() FeatureState.raidHover:Destroy() end)
+        FeatureState.raidHover=nil
+        if bodyVelocity then
+            bodyVelocity.MaxForce=Vector3.new(0,math.max(10000,root.AssemblyMass*workspace.Gravity*1.5),0)
+        end
+    end
     local flat=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
     if flat.Magnitude>0.1 and bodyGyro then bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+flat) end
     if r.concluida then faseVoo="No destino";return end
@@ -2250,6 +2274,10 @@ local Raid = (function()
         return best
     end
     local function approach(root,point,key,radius)
+        if key=="RaidEnemy" then
+            definirDestino(point,key)
+            return (root.Position-point).Magnitude<=radius
+        end
         if (root.Position-point).Magnitude>radius then definirDestino(point,key);return false end
         if rota and rota.chave==key then liberarVoo() end
         return true
