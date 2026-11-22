@@ -780,7 +780,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1026,7 +1026,7 @@ local function buscarEAtacar()
     definirDestino(er.Position+Vector3.new(0,alturaInimigo,0),alvo)
 end
 local function atacar()
-    if not State.AutoFarmQuest or State.AutoSeaBeast or os.clock()<(FeatureState.islandUntil or 0) or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
+    if not State.AutoFarmQuest or State.AutoSeaBeast or State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
     if emTransicao() or (campanha and campanha.ilha=="Volcano Island" and not dentroVulcao()) then return end
     local _,root,hum=character()
     if not root or not hum or hum.Health<=0 then return end
@@ -1056,7 +1056,7 @@ local function definirFarm(v)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
             local ok,err=pcall(function()
-                if os.clock()>=(FeatureState.islandUntil or 0) and not State.AutoSeaBeast and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
+                if os.clock()>=(FeatureState.islandUntil or 0) and not State.AutoSeaBeast and not State.AutoRaid and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
                     if os.clock()-ultimaQuest>0.3 then ultimaQuest=os.clock();advanceQuest() end
                     buscarEAtacar()
                 end
@@ -1408,7 +1408,7 @@ local function guardarFruta()
 end
 
 local function atualizarFarmFruta()
-    if os.clock()<(FeatureState.islandUntil or 0) then return end
+    if State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) then FeatureState.frutaOcupada=false;return end
     if State.AutoSeaBeast then
         FeatureState.frutaOcupada=false
         return
@@ -1676,7 +1676,7 @@ local function encontrarVaraPesca()
     return nil
 end
 local function atualizarLancamentoPesca()
-    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
+    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
     if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible then return end
     if os.clock()<FeatureState.bloquearAtePesca or os.clock()-FeatureState.ultimoLancamentoPesca<8 then return end
     local _,root,hum=character()
@@ -1699,6 +1699,9 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    State.AutoRaid=false
+    if type(env.GRHubRaidCleanup)=="function" then pcall(env.GRHubRaidCleanup) end
+    env.GRHubRaidCleanup=nil
     State.AutoSeaBeast=false
     State.SeaBeastESP=false
     if type(env.GRHubSeaCleanup)=="function" then pcall(env.GRHubSeaCleanup) end
@@ -1741,7 +1744,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -2042,7 +2045,7 @@ local Sea = (function()
     local function tick()
         scan()
         draw()
-        if os.clock()<(FeatureState.islandUntil or 0) then return end
+        if State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) then return end
         if not State.AutoSeaBeast then
             if S.target then S.target=nil; S.status="Desligado" end
             return
@@ -2565,7 +2568,13 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V8.0 - ISLAND TELEPORT",
+        "GR HUB V8.1 - AUTO RAID",
+        "Auto Raid: "..tostring(State.AutoRaid),
+        "Raid status: "..tostring(Raid.status),
+        "Raid state: "..tostring(Raid.state),
+        "Raid fort: "..tostring(Raid.fort),
+        "Raid onda: "..tostring(Raid.wave).."/"..tostring(Raid.waves),
+        "Raid alvo: "..tostring(Raid.enemy and Raid.enemy.Name),
         "Ilha escolhida: "..tostring(IslandTeleport.chosen),
         "Ilha TP: "..tostring(IslandTeleport.status),
         "Auto Sea Beast: "..tostring(State.AutoSeaBeast),
@@ -2660,6 +2669,7 @@ Hub.AddTab("Fruits","Fruits","grape")
 Hub.AddTab("Fishing","Fishing","fish")
 Hub.AddTab("Sea","Sea","waves")
 Hub.AddTab("Teleport","Teleport","map-pin")
+Hub.AddTab("Raid","Raid","swords")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
@@ -2688,6 +2698,9 @@ Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
 local secTP=Hub.CreateSection("Teleport","ILHAS - TELEPORTE")
 Hub.CreateDropdown(secTP,"Selecionar ilha",IslandTeleport.options,IslandTeleport.choose)
 Hub.CreateButton(secTP,"Teleportar para ilha",IslandTeleport.go)
+local secRaid=Hub.CreateSection("Raid","MARINE FORT RAID")
+Hub.CreateToggle(secRaid,"Auto Raid (ondas, boss e baús)",Raid.setAuto)
+Hub.CreateButton(secRaid,"Teleportar para Raid",Raid.teleport)
 local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
@@ -2710,6 +2723,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V8.0] Teleportar ilhas + Fishing icon; Sea Beast, ESP, Auto Farm mantidos")
+print("[GR Hub V8.1] Auto Marine Fort Raid, ondas, boss, cofre e baús")
 
 end)()
