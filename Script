@@ -1727,6 +1727,8 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubGachaStop)=="function" then pcall(env.GRHubGachaStop) end
+    env.GRHubGachaStop=nil
     if type(env.GRHubFruitShopStop)=="function" then pcall(env.GRHubFruitShopStop) end
     env.GRHubFruitShopStop=nil
     FeatureState.islandTraveling=false
@@ -2793,7 +2795,7 @@ end)()
 local FruitShopAuto = (function()
     local P={
         active=false,names={},chosen={},
-        allowReplace=false,stock={},stockLoaded=false,status="Desligado",lastFetch=-120,
+        stock={},stockLoaded=false,status="Desligado",lastFetch=-120,
         attempts=0,purchases=0,requesting=false,stopped=false,
         lastAttempt=0,lastCycle=nil,lastFruit="-",lastPrice=0
     }
@@ -2868,9 +2870,6 @@ local FruitShopAuto = (function()
         local gold=wallet()
         if not gold then return nil,"Saldo Gold não carregado" end
         local holding=oldFruit()
-        if holding and not P.allowReplace then
-            return nil,"Você já equipa "..holding.." (ative 'Permitir substituir')"
-        end
         local selected=0
         local offers={}
         local skipped={}
@@ -2911,9 +2910,6 @@ local FruitShopAuto = (function()
         local count=0
         for _ in pairs(P.chosen) do count+=1 end
         P.status=tostring(count).." frutas selecionadas"
-    end
-    function P.setReplace(v)
-        P.allowReplace=(v==true)
     end
     function P.setAuto(v)
         P.active=(v==true)
@@ -3012,14 +3008,136 @@ local FruitShopAuto = (function()
     return P
 end)()
 
+local FruitGachaAuto = (function()
+    local G={active=false,status="Desligado",spins=0,lastResult="-",lastTry=0,nextTry=0,waiting=false,stopped=false}
+    local function spinDelay()
+        local fruits=mainModulo and mainModulo.FruitsUtils
+        return tonumber(fruits and fruits.GachaSpinTime) or 7200
+    end
+    local function lastSpin()
+        local last=nil
+        if mainModulo and mainModulo.Registry then
+            local ok,v=pcall(function()
+                return mainModulo.Registry:Get(nil,"FruitSpinDeltaTime")
+            end)
+            if ok then last=tonumber(v) end
+        end
+        if not last then
+            local data=lerDados()
+            last=tonumber(data and data.Registry and data.Registry.FruitSpinDeltaTime)
+        end
+        return last
+    end
+    local function remaining()
+        local last=lastSpin()
+        if not last then return 0 end
+        return math.max(0,last+spinDelay()-os.time())
+    end
+    local function spinPrice()
+        local fruits=mainModulo and mainModulo.FruitsUtils
+        if not fruits then return nil end
+        if type(fruits.GachaCost)=="function" then
+            local ok,cost=pcall(function() return fruits.GachaCost(nil) end)
+            if ok and type(cost)=="number" and cost>0 then return math.ceil(cost) end
+        end
+        local data=lerDados()
+        local level=data and data.Statistics and tonumber(data.Statistics.Level)
+        if not level then return nil end
+        return math.max(tonumber(fruits.GachaMinPrice) or 3000,level*(tonumber(fruits.GachaPricePerLevel) or 30))
+    end
+    function G.setAuto(v)
+        G.active=(v==true)
+        G.status=G.active and "Aguardando giro disponível" or "Desligado"
+        if G.active then G.nextTry=0 end
+    end
+    function G.cleanup()
+        G.active=false
+        G.stopped=true
+    end
+    env.GRHubGachaStop=G.cleanup
+    task.spawn(function()
+        while running() and not G.stopped do
+            local ok,err=pcall(function()
+                if not G.active or G.waiting then return end
+                if emTransicao() or State.AutoRaid or State.AutoSeaBeast or FeatureState.islandTraveling
+                    or FeatureState.pescandoAgora or FeatureState.frutaOcupada then
+                    G.status="Aguardando outra atividade terminar"
+                    return
+                end
+                local cd=remaining()
+                if cd>0 then
+                    G.status="Próximo giro em "..math.ceil(cd/60).." min"
+                    return
+                end
+                if os.clock()<G.nextTry then return end
+                local data=lerDados()
+                local gold=data and data.Monetization and tonumber(data.Monetization.Gold)
+                local price=spinPrice()
+                if not gold or not price then
+                    G.status="Aguardando Gold/valor do giro"
+                    G.nextTry=os.clock()+15
+                    return
+                end
+                if gold<price then
+                    G.status="Gold insuficiente (precisa "..math.floor(price)..")"
+                    G.nextTry=os.clock()+15
+                    return
+                end
+                if not dadosModulo or not dadosModulo.Network then
+                    G.status="Remote do gacha indisponível"
+                    G.nextTry=os.clock()+30
+                    return
+                end
+                G.waiting=true
+                G.lastTry=os.clock()
+                G.nextTry=os.clock()+60
+                local done,result=pcall(function()
+                    return dadosModulo.Network:InvokeServer("FruitGacha","Spin")
+                end)
+                G.waiting=false
+                if not G.active or G.stopped then return end
+                if done and result then
+                    G.spins+=1
+                    G.lastResult=tostring(result)
+                    G.status="Girou: "..G.lastResult
+                    G.nextTry=os.clock()+spinDelay()
+                    print("[GR Hub Auto Gacha] "..G.status)
+                    pcall(function()
+                        game:GetService("StarterGui"):SetCore("SendNotification",{
+                            Title="GR Hub - Auto Gacha",Text=G.status,Duration=5
+                        })
+                    end)
+                else
+                    G.status="Giro não confirmado; aguardando nova tentativa"
+                    G.nextTry=os.clock()+60
+                    if not done then warn("[GR Hub Auto Gacha]",result) end
+                end
+            end)
+            if not ok then
+                G.waiting=false
+                G.status="Erro no Auto Gacha: "..tostring(err)
+                G.nextTry=os.clock()+60
+                warn("[GR Hub Auto Gacha]",err)
+            end
+            task.wait(G.active and 2 or 1.5)
+        end
+        G.cleanup()
+    end)
+    return G
+end)()
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V9.1 - AUTO GACHA",
-        "Auto Gacha: "..tostring(FruitShopAuto.active),
+        "GR HUB V9.2 - AUTO GACHA E BUY FRUIT",
+        "Auto Gacha: "..tostring(FruitGachaAuto.active),
+        "Auto Gacha status: "..tostring(FruitGachaAuto.status),
+        "Auto Gacha giros: "..tostring(FruitGachaAuto.spins),
+        "Auto Gacha último resultado: "..tostring(FruitGachaAuto.lastResult),
+        "Buy Fruit: "..tostring(FruitShopAuto.active),
         "Loja: "..tostring(FruitShopAuto.status),
         "Tentativas compra frutas: "..tostring(FruitShopAuto.attempts),
         "Compras confirmadas pelo saldo: "..tostring(FruitShopAuto.purchases),
@@ -3149,7 +3267,9 @@ end
 Hub.CreateToggle(secFrutas,"Auto Farm Fruit (TP)",definirFarmFruta)
 Hub.CreateToggle(secFrutas,"Fruit ESP",definirESPFruta)
 Hub.CreateToggle(secFrutas,"Auto Store Fruit",definirStoreFruta)
-local secShop=Hub.CreateSection("Fruits","AUTO GACHA")
+local secGacha=Hub.CreateSection("Fruits","AUTO GACHA - GIRAR FRUTAS")
+Hub.CreateToggle(secGacha,"Auto Gacha",FruitGachaAuto.setAuto,nil,false)
+local secShop=Hub.CreateSection("Fruits","BUY FRUIT - LOJA")
 if type(Hub.CreateMultiDropdown)=="function" then
     Hub.CreateMultiDropdown(secShop,"Frutas para comprar",FruitShopAuto.names,FruitShopAuto.setSelected,{})
 else
@@ -3157,8 +3277,7 @@ else
         FruitShopAuto.setSelected({v})
     end)
 end
-Hub.CreateToggle(secShop,"Permitir substituir fruta equipada",FruitShopAuto.setReplace)
-Hub.CreateToggle(secShop,"Auto Gacha",FruitShopAuto.setAuto,nil,false)
+Hub.CreateToggle(secShop,"Buy Fruit",FruitShopAuto.setAuto,nil,false)
 Hub.CreateButton(secShop,"Consultar estoque de frutas",FruitShopAuto.showStock,"search")
 local secPesca=Hub.CreateSection("Fishing","AUTO FISHING")
 Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
@@ -3197,6 +3316,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V9.1] Auto Gacha com seleção de frutas, estoque e saldo disponível")
+print("[GR Hub V9.2] Auto Gacha = girar frutas; Buy Fruit = comprar frutas da loja")
 
 end)()
