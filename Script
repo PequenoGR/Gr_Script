@@ -766,7 +766,9 @@ local function definirDestino(destino,chave)
     local diff=(rota.destino-destino).Magnitude
     local tempo=os.clock()-ultimoInicioRota
     if rota.concluida then
-        if (root.Position-destino).Magnitude>6 and tempo>0.35 then criarRota(root,destino,chave)
+        local margem=chave=="RaidEnemy" and 2 or 6
+        local espera=chave=="RaidEnemy" and 0.18 or 0.35
+        if (root.Position-destino).Magnitude>margem and tempo>espera then criarRota(root,destino,chave)
         else rota.destino=destino end
         return
     end
@@ -2269,13 +2271,13 @@ local Raid = (function()
         R.enemy=model
         local e=enemyRoot(model)
         if not e then return end
-        local delta=root.Position-e.Position
-        local horizontal=Vector3.new(delta.X,0,delta.Z)
-        if horizontal.Magnitude<.01 then horizontal=Vector3.new(1,0,0) end
-        local point=e.Position+horizontal.Unit*6+Vector3.new(0,3,0)
-        R.status="Atacando "..model.Name
-        approach(root,point,"RaidEnemy",4)
-        if delta.Magnitude>15 then return end
+        local point=e.Position+Vector3.new(0,5,0)
+        R.status="Atacando por cima: "..model.Name
+        local perto=approach(root,point,"RaidEnemy",2.5)
+        if rota and rota.chave=="RaidEnemy" and (root.Position-point).Magnitude<30 then
+            rota.cruzeiro=math.max(root.Position.Y,point.Y)+2
+        end
+        if not perto and (root.Position-point).Magnitude>7 then return end
         local tool=equiparArma()
         if not tool then R.status="Tool selecionada indisponível";return end
         if os.clock()-R.lastM1>.22 then
