@@ -1836,6 +1836,7 @@ local function copiarDebug()
     if setclipboard then pcall(setclipboard,result) end
 end
 
+(function()
 env.GRHub=nil
 local ok,erro=pcall(function()
     local source=game:HttpGet(INTERFACE_URL)
@@ -1895,3 +1896,5 @@ Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
 print("[GR Hub V7.8] Auto Stats e Auto Fishing (barra verde acompanha o peixe)")
+
+end)()
