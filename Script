@@ -754,7 +754,7 @@ end
 local function criarRota(root,destino,chave)
     local origem=root.Position
     local horizontal=Vector3.new(destino.X-origem.X,0,destino.Z-origem.Z).Magnitude
-    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge" or chave=="AutoBoss" or chave=="SeaBoss" or chave=="SeaDodge") and (math.max(origem.Y,destino.Y)+4) or alturaSegura(origem,destino)
+    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge" or chave=="AutoBoss" or chave=="BossDodge" or chave=="SeaBoss" or chave=="SeaDodge") and (math.max(origem.Y,destino.Y)+4) or alturaSegura(origem,destino)
     rota={root=root,chave=chave,destino=destino,cruzeiro=cruzeiro,fase=horizontal<20 and 3 or 1,concluida=false}
     ultimoInicioRota=os.clock()
 end
@@ -818,6 +818,14 @@ local function atualizarVoo(dt)
     end
     local flat=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
     if flat.Magnitude>0.1 and bodyGyro then bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+flat) end
+    if r.chave=="BossDodge" then
+        local shift=r.destino-root.Position
+        if shift.Magnitude<2 then r.concluida=true;faseVoo="Esquiva concluída";return end
+        local step=math.min(shift.Magnitude,math.max(650,modo.Velocidade)*math.min(dt,.1))
+        char:TranslateBy(shift.Unit*step)
+        faseVoo="Boss: esquiva rápida"
+        return
+    end
     if r.concluida then faseVoo="No destino";return end
     local velocidade=r.chave=="IslandTP" and (FeatureState.islandSpeed or 45) or ((r.chave=="SeaBoss" or r.chave=="SeaDodge") and math.max(modo.Velocidade,r.chave=="SeaDodge" and 520 or 420) or modo.Velocidade)
     local restante=velocidade*math.min(dt,0.1)
@@ -3233,7 +3241,9 @@ local BossFarm = (function()
         active=false,chosen="Mais próximo",list={},choices={"Mais próximo"},
         target=nil,status="Desligado",found=0,defeated=0,m1=0,skillsUsed=0,
         lastScan=-10,lastFull=-20,lastAttack=0,lastSkill=0,skillIndex=0,
-        lastHP=nil,lastEnemy=nil,ability=nil,dead=false,lastError=0
+        lastHP=nil,lastEnemy=nil,ability=nil,dead=false,lastError=0,
+        dodgeUntil=0,dodgePoint=nil,dodges=0,lastDodge=0,dodgeReason="-",
+        lastPlayerHP=nil,lastThreatToken=nil,lastDangerScan=-10,zones={},hazardsFound=0,currentDanger="-"
     }
     local function enemyRoot(model)
         return rootInimigo(model)
@@ -3346,7 +3356,7 @@ local BossFarm = (function()
             B.chosen=value
             B.target=nil
             B.lastScan=-10
-            if rota and rota.chave=="AutoBoss" then liberarVoo() end
+            if rota and (rota.chave=="AutoBoss" or rota.chave=="BossDodge") then liberarVoo() end
         end
     end
     function B.setAuto(v)
@@ -3356,10 +3366,16 @@ local BossFarm = (function()
         B.target=nil
         B.lastScan=-10
         B.lastHP=nil
+        B.lastPlayerHP=nil
+        B.dodgeUntil=0
+        B.dodgePoint=nil
+        B.lastThreatToken=nil
+        B.zones={}
+        B.currentDanger="-"
         if B.active then
             FeatureState.frutaOcupada=false
             if rota then liberarVoo() end
-        elseif rota and rota.chave=="AutoBoss" then
+        elseif rota and (rota.chave=="AutoBoss" or rota.chave=="BossDodge") then
             liberarVoo()
         end
     end
@@ -3379,6 +3395,136 @@ local BossFarm = (function()
             end
         end
         return best
+    end
+
+    local function planar(p,q)
+        local dx=p.X-q.X
+        local dz=p.Z-q.Z
+        return math.sqrt(dx*dx+dz*dz)
+    end
+    local function risk(zone,pt)
+        if math.abs(pt.Y-zone.pos.Y)>(zone.height or 80) then return 0 end
+        if zone.kind=="box" then
+            local localPt=zone.cf:PointToObjectSpace(pt)
+            local x=zone.width*.5+6-math.abs(localPt.X)
+            local z=zone.length*.5+6-math.abs(localPt.Z)
+            if x<=0 or z<=0 then return 0 end
+            return 13+math.min(x,z)*.55
+        end
+        local r=planar(pt,zone.pos)
+        local outer=zone.radius+6
+        local inner=math.max(0,(zone.inner or 0)-4)
+        if r>=outer or r<inner then return 0 end
+        return 12+math.min(outer-r,27)*.65
+    end
+    local function projectile(name)
+        local text=tostring(name or ""):lower()
+        for _,word in ipairs({"projectile","meteor","fireball","iceball","waterbomb","lightning","thunderbolt","shockwave","bomb","explosion","energyorb","fireorb","spike","spear","tornado","vortex","bladebeam","bullet"}) do
+            if text:find(word,1,true) then return true end
+        end
+        return false
+    end
+    local function collectDanger(root,enemy)
+        local now=os.clock()
+        if now-B.lastDangerScan<.085 then return B.zones end
+        B.lastDangerScan=now
+        local zones={}
+        local camera=workspace.CurrentCamera
+        local alerts=camera and camera:FindFirstChild("BossTelegraphs")
+        if alerts and planar(root.Position,enemy.Position)<310 then
+            for _,obj in ipairs(alerts:GetDescendants()) do
+                if obj.Name=="Telegraph" then
+                    if obj:IsA("BasePart") and obj.Transparency<.97 then
+                        local pos=obj.Position
+                        if planar(pos,enemy.Position)<360 and planar(pos,root.Position)<250 then
+                            if obj.Shape==Enum.PartType.Cylinder then
+                                table.insert(zones,{kind="circle",pos=pos,radius=math.max(obj.Size.Y,obj.Size.Z)*.5,
+                                    height=80,reason="Círculo de ataque",token=obj})
+                            else
+                                table.insert(zones,{kind="box",pos=pos,cf=obj.CFrame,width=obj.Size.X,length=obj.Size.Z,
+                                    height=80,reason="Ataque em faixa ou caixa",token=obj})
+                            end
+                        end
+                    elseif obj:IsA("CylinderHandleAdornment") and obj.Transparency<.97 then
+                        local pos=obj.CFrame.Position
+                        if planar(pos,enemy.Position)<360 and planar(pos,root.Position)<250 then
+                            table.insert(zones,{kind="circle",pos=pos,radius=obj.Radius,inner=obj.InnerRadius,
+                                height=80,reason="Anel de ataque",token=obj})
+                        end
+                    end
+                end
+            end
+        end
+        local ignored=workspace:FindFirstChild("IgnoreList")
+        local temp=ignored and ignored:FindFirstChild("Temp")
+        if temp and (root.Position-enemy.Position).Magnitude<240 then
+            local checked=0
+            for _,obj in ipairs(temp:GetDescendants()) do
+                checked+=1
+                if checked>300 then break end
+                if projectile(obj.Name) and (obj:IsA("BasePart") or obj:IsA("Model")) then
+                    local part=obj:IsA("BasePart") and obj or (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart",true))
+                    if part and (part.Position-root.Position).Magnitude<105
+                        and (part.Position-enemy.Position).Magnitude<225 then
+                        local velocity=part.AssemblyLinearVelocity
+                        local point=part.Position
+                        if velocity.Magnitude>10 then
+                            local t=math.clamp((root.Position-part.Position):Dot(velocity)/math.max(velocity:Dot(velocity),1),0,.7)
+                            point=part.Position+velocity*t
+                        end
+                        table.insert(zones,{kind="circle",pos=point,
+                            radius=math.clamp(math.max(part.Size.X,part.Size.Z)*.5+11,14,42),
+                            height=42,reason="Projétil do boss",token=obj})
+                    end
+                end
+            end
+        end
+        B.zones=zones
+        B.hazardsFound=#zones
+        return zones
+    end
+    local function dangerAt(zones,pt)
+        local total,top,topRisk=0,nil,0
+        for _,zone in ipairs(zones) do
+            local value=risk(zone,pt)
+            total+=value
+            if value>topRisk then topRisk=value;top=zone end
+        end
+        return total,top
+    end
+    local function dodgeTarget(root,enemy,zones)
+        local away=root.Position-enemy.Position
+        away=Vector3.new(away.X,0,away.Z)
+        if away.Magnitude<1 then away=Vector3.new(1,0,0) end
+        away=away.Unit
+        local side=Vector3.new(-away.Z,0,away.X)
+        local dirs={away,side,-side,-away,(away+side).Unit,(away-side).Unit,(-away+side).Unit,(-away-side).Unit}
+        local best,score=nil,math.huge
+        for _,step in ipairs({30,48,68,90}) do
+            for _,dir in ipairs(dirs) do
+                local pt=root.Position+dir*step+Vector3.new(0,6,0)
+                local exposure=dangerAt(zones,pt)
+                local dist=(pt-enemy.Position).Magnitude
+                local rating=exposure*80+math.abs(dist-24)*.18+step*.075
+                if rating<score then best,score=pt,rating end
+            end
+            if score<6 then break end
+        end
+        return best or root.Position+away*45+Vector3.new(0,6,0)
+    end
+    local function evade(root,enemy,zones,reason,token)
+        local now=os.clock()
+        if now-B.lastDodge<.38 then return false end
+        if token==B.lastThreatToken and now-B.lastDodge<1.05 then return false end
+        B.lastDodge=now
+        B.lastThreatToken=token
+        B.dodges+=1
+        B.dodgeReason=reason
+        B.currentDanger=reason
+        B.dodgeUntil=now+.65
+        B.dodgePoint=dodgeTarget(root,enemy,zones)
+        if rota and (rota.chave=="AutoBoss" or rota.chave=="BossDodge") then liberarVoo() end
+        return true
     end
     local function useSkill(tool)
         if os.clock()-B.lastSkill<1.7 then return end
@@ -3433,7 +3579,7 @@ local BossFarm = (function()
             or FeatureState.pescandoAgora or emTransicao()
             or os.clock()<(FeatureState.islandUntil or 0) then
             B.status="Pausado por outro sistema"
-            if rota and rota.chave=="AutoBoss" then liberarVoo() end
+            if rota and (rota.chave=="AutoBoss" or rota.chave=="BossDodge") then liberarVoo() end
             return
         end
         local _,root,hum=character()
@@ -3446,18 +3592,47 @@ local BossFarm = (function()
         if not boss then
             B.target=nil
             B.status=(B.chosen=="Mais próximo" and "Aguardando boss aparecer" or ("Aguardando: "..B.chosen))
-            if rota and rota.chave=="AutoBoss" then liberarVoo() end
+            if rota and (rota.chave=="AutoBoss" or rota.chave=="BossDodge") then liberarVoo() end
             return
         end
         if B.target~=boss then
             B.target=boss
             B.lastHP=nil
+            B.lastPlayerHP=nil
+            B.lastThreatToken=nil
+            B.dodgeUntil=0
+            B.dodgePoint=nil
+            B.zones={}
         end
         local enemy=enemyRoot(boss)
         if not enemy then return end
         local hp=vidaInimigo(boss)
         if hp and B.lastHP and hp<=0 and B.lastHP>0 then B.defeated+=1 end
         B.lastHP=hp
+        local zones=collectDanger(root,enemy)
+        local dangerLevel,threat=dangerAt(zones,root.Position)
+        local now=os.clock()
+        local hurt=B.lastPlayerHP and hum.Health<B.lastPlayerHP-math.max(5,hum.MaxHealth*.025)
+        B.lastPlayerHP=hum.Health
+        if dangerLevel>0 and threat then
+            B.currentDanger=threat.reason
+            if now>=B.dodgeUntil or (B.dodgePoint and dangerAt(zones,B.dodgePoint)>0) then
+                evade(root,enemy,zones,threat.reason,threat.token)
+            end
+        elseif hurt and (root.Position-enemy.Position).Magnitude<100 then
+            B.currentDanger="Dano recebido"
+            evade(root,enemy,zones,"Dano recebido","hurt:"..tostring(math.floor(now*3)))
+        else
+            B.currentDanger="-"
+        end
+        if now<B.dodgeUntil and B.dodgePoint then
+            B.status="Desviando ("..B.dodges.."): "..B.dodgeReason
+            definirDestino(B.dodgePoint,"BossDodge")
+            if (root.Position-B.dodgePoint).Magnitude<5 and dangerLevel==0 then
+                B.dodgeUntil=math.min(B.dodgeUntil,now+.12)
+            end
+            return
+        end
         local target=enemy.Position+Vector3.new(0,5,0)
         local distance=(root.Position-enemy.Position).Magnitude
         B.status=(distance>12 and "Indo ao boss: " or "Atacando boss: ")..bossName(boss)
@@ -3472,7 +3647,7 @@ local BossFarm = (function()
         if direction.Magnitude>.1 then
             pcall(function() root.CFrame=CFrame.lookAt(root.Position,root.Position+direction) end)
         end
-        if os.clock()-B.lastAttack>.2 then
+        if os.clock()-B.lastAttack>.14 then
             B.lastAttack=os.clock()
             local ok=pcall(function() tool:Activate() end)
             if ok then B.m1+=1 end
@@ -3482,8 +3657,11 @@ local BossFarm = (function()
     function B.cleanup()
         B.dead=true
         B.active=false
+        B.dodgeUntil=0
+        B.dodgePoint=nil
+        B.zones={}
         State.AutoBoss=false
-        if rota and rota.chave=="AutoBoss" then liberarVoo() end
+        if rota and (rota.chave=="AutoBoss" or rota.chave=="BossDodge") then liberarVoo() end
     end
     env.GRHubBossStop=B.cleanup
     task.spawn(function()
@@ -3496,7 +3674,7 @@ local BossFarm = (function()
                     warn("[GR Hub Auto Boss]",err)
                 end
             end
-            task.wait(State.AutoBoss and .11 or 1.5)
+            task.wait(State.AutoBoss and .055 or 1.5)
         end
         B.cleanup()
     end)
@@ -3517,6 +3695,9 @@ local function copiarDebug()
         "Boss status: "..tostring(BossFarm.status),
         "Boss M1: "..tostring(BossFarm.m1),
         "Boss Skills: "..tostring(BossFarm.skillsUsed),
+        "Boss esquivas: "..tostring(BossFarm.dodges),
+        "Boss perigo: "..tostring(BossFarm.currentDanger),
+        "Boss zonas perigosas: "..tostring(BossFarm.hazardsFound),
         "Auto Gacha: "..tostring(FruitGachaAuto.active),
         "Auto Gacha status: "..tostring(FruitGachaAuto.status),
         "Auto Gacha giros: "..tostring(FruitGachaAuto.spins),
@@ -3713,6 +3894,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V9.5] Sea Beast: distância segura da cabeça, aproximação rápida e esquivas inteligentes")
+print("[GR Hub V9.6] Auto Boss: esquiva de círculos, anéis, caixas, linhas e projéteis")
 
 end)()
