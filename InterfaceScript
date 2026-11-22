@@ -160,28 +160,17 @@ for _,group in pairs(catalog) do
 end
 local aliases={main="home",house="home",combat="swords",combate="swords",fruits="grape",fruit="grape",fruta="grape",frutas="grape",inventory="backpack",inventario="backpack",player="user",jogador="user",teleport="map-pin",quests="scroll",quest="scroll",shop="shopping-cart",config="settings",auto="bot",farm="bot",autofarm="bot",visual="eye",esp="eye",zap="electricity",footprints="move",pesca="anchor",boss="crown",icons="layout-grid",icon="layout-grid"}
 for k,v in pairs(aliases) do Icons[k]=Icons[v] end
-Icons.fish="emoji:🐟"
+Icons.fish="rbxassetid://1160001531"
 Icons.fishing=Icons.fish
 Icons.peixes=Icons.fish
-Icons.pesca=Icons.fish
 local function getIcon(value)
     if value==nil or value=="" then return nil end
     local raw=tostring(value)
-    if raw:sub(1,6)=="emoji:" then return raw end
     if raw:match("^%d+$") then return "rbxassetid://"..raw end
     return Icons[normalize(raw):gsub("^lucide%-","")] or (raw:match("^rbxasset") and raw) or (raw:match("^https?://") and raw) or nil
 end
 local function img(parent,id,props)
-    local resolved=getIcon(id)
-    if resolved and resolved:sub(1,6)=="emoji:" then
-        local p={BackgroundTransparency=1,Text=resolved:sub(7),TextScaled=true,TextColor3="white",Font=font}
-        for k,v in pairs(props or {}) do
-            if k=="ImageColor3" then p.TextColor3=v
-            elseif k~="Image" and k~="ScaleType" then p[k]=v end
-        end
-        return create("TextLabel",parent,p)
-    end
-    local p={BackgroundTransparency=1,Image=resolved or "",ImageColor3="white",ScaleType=Enum.ScaleType.Fit}
+    local p={BackgroundTransparency=1,Image=getIcon(id) or "",ImageColor3="white",ScaleType=Enum.ScaleType.Fit}
     for k,v in pairs(props or {}) do p[k]=v end
     return create("ImageLabel",parent,p)
 end
