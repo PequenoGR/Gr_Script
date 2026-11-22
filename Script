@@ -783,8 +783,8 @@ local function definirDestino(destino,chave)
     end
 end
 local function atualizarVoo(dt)
-    if os.clock()<(FeatureState.islandUntil or 0) then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid) or not running() then return end
+    if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -819,7 +819,8 @@ local function atualizarVoo(dt)
     local flat=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
     if flat.Magnitude>0.1 and bodyGyro then bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+flat) end
     if r.concluida then faseVoo="No destino";return end
-    local restante=modo.Velocidade*math.min(dt,0.1)
+    local velocidade=r.chave=="IslandTP" and (FeatureState.islandSpeed or 100) or modo.Velocidade
+    local restante=velocidade*math.min(dt,0.1)
     for _=1,12 do
         if restante<=0 or rota~=r then break end
         local pos=root.Position
@@ -1726,6 +1727,10 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    FeatureState.islandTraveling=false
+    FeatureState.islandUntil=0
+    if type(env.GRHubIslandStop)=="function" then pcall(env.GRHubIslandStop) end
+    env.GRHubIslandStop=nil
     State.AutoRaid=false
     if type(env.GRHubRaidCleanup)=="function" then pcall(env.GRHubRaidCleanup) end
     env.GRHubRaidCleanup=nil
@@ -2590,7 +2595,15 @@ local Raid = (function()
 end)()
 
 local IslandTeleport = (function()
-    local T = {chosen=nil,options={},status="Pronto"}
+    local T = {
+        chosen=nil,options={},status="Pronto",
+        speed=100,token=0,traveling=false,
+        speedChoices={
+            {Name="Lento (100)",Valor=100},
+            {Name="Normal (175)",Valor=175},
+            {Name="Rápido (300)",Valor=300}
+        }
+    }
     local function areas()
         local map=workspace:FindFirstChild("Map")
         return map and map:FindFirstChild("Areas")
@@ -2628,6 +2641,20 @@ local IslandTeleport = (function()
         if type(v)=="table" then v=v.Name or v.Value or v.Valor end
         if type(v)=="string" and v~="" then T.chosen=v end
     end
+    function T.setSpeed(v)
+        if type(v)=="table" then v=v.Valor or v.Value end
+        if type(v)=="number" then T.speed=math.clamp(v,35,400) end
+        FeatureState.islandSpeed=T.speed
+    end
+    function T.stop()
+        T.token+=1
+        T.traveling=false
+        FeatureState.islandTraveling=false
+        FeatureState.islandUntil=os.clock()+1
+        if rota and rota.chave=="IslandTP" then liberarVoo() end
+        T.status="Viagem cancelada"
+    end
+    env.GRHubIslandStop=T.stop
     local function findSpawn(area,center)
         local ignore=workspace:FindFirstChild("IgnoreList")
         local data=ignore and ignore:FindFirstChild("Data")
@@ -2701,21 +2728,61 @@ local IslandTeleport = (function()
             warn("[GR Hub Teleport]",T.status)
             return
         end
-        FeatureState.islandUntil=os.clock()+6
+        if T.traveling then T.stop() end
+        T.token+=1
+        local token=T.token
+        local target=point+Vector3.new(0,4,0)
+        local speed=T.speed
+        local distance=(root.Position-target).Magnitude
+        local deadline=os.clock()+math.max(60,math.min(950,distance/speed*4+45))
+        T.traveling=true
+        FeatureState.islandTraveling=true
+        FeatureState.islandSpeed=speed
         FeatureState.frutaOcupada=false
+        FeatureState.islandUntil=os.clock()+3
         liberarVoo()
-        local ok,err=pcall(function()
-            char:PivotTo(CFrame.new(point+Vector3.new(0,4,0))*root.CFrame.Rotation)
-            root.AssemblyLinearVelocity=Vector3.zero
-            root.AssemblyAngularVelocity=Vector3.zero
+        definirDestino(target,"IslandTP")
+        T.status="Viajando devagar: "..tostring(selected)
+        task.spawn(function()
+            local completed=false
+            while T.token==token and T.traveling and running() do
+                FeatureState.islandUntil=os.clock()+3
+                local _,currentRoot,currentHum=character()
+                if not currentRoot or not currentHum or currentHum.Health<=0 then
+                    T.status="Viagem interrompida: personagem indisponível"
+                    break
+                end
+                if emTransicao() then
+                    T.status="Viagem interrompida: transição do jogo"
+                    break
+                end
+                local left=(currentRoot.Position-target).Magnitude
+                if left<=7 then
+                    completed=true
+                    break
+                end
+                if os.clock()>deadline then
+                    T.status="Viagem encerrada: tempo limite ou movimento bloqueado"
+                    break
+                end
+                if not rota or rota.chave~="IslandTP" then
+                    definirDestino(target,"IslandTP")
+                end
+                T.status="Viajando para "..selected.." ("..math.floor(left).." studs)"
+                task.wait(.18)
+            end
+            if T.token~=token then return end
+            T.traveling=false
+            FeatureState.islandTraveling=false
+            FeatureState.islandUntil=os.clock()+1.5
+            if rota and rota.chave=="IslandTP" then liberarVoo() end
+            if completed then
+                T.status="Chegou à ilha: "..selected
+                print("[GR Hub Teleport]",T.status)
+            else
+                warn("[GR Hub Teleport]",T.status)
+            end
         end)
-        if ok then
-            T.status="Teleporte solicitado: "..tostring(selected)
-            print("[GR Hub]",T.status)
-        else
-            T.status="Falha no TP: "..tostring(err)
-            warn("[GR Hub Teleport]",T.status)
-        end
     end
     return T
 end)()
@@ -2739,6 +2806,8 @@ local function copiarDebug()
         "Raid skills tentadas: "..tostring(Raid.skillCount),
         "Ilha escolhida: "..tostring(IslandTeleport.chosen),
         "Ilha TP: "..tostring(IslandTeleport.status),
+        "Velocidade do TP: "..tostring(IslandTeleport.speed),
+        "TP em viagem: "..tostring(IslandTeleport.traveling),
         "Auto Sea Beast: "..tostring(State.AutoSeaBeast),
         "Sea Beast ESP: "..tostring(State.SeaBeastESP),
         "Tipo de Sea Beast: "..tostring(Sea.mode),
@@ -2859,7 +2928,9 @@ Hub.CreateToggle(secSea,"Sea Beast ESP",Sea.setESP)
 Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
 local secTP=Hub.CreateSection("Teleport","ILHAS - TELEPORTE")
 Hub.CreateDropdown(secTP,"Selecionar ilha",IslandTeleport.options,IslandTeleport.choose)
-Hub.CreateButton(secTP,"Teleportar para ilha",IslandTeleport.go)
+Hub.CreateDropdown(secTP,"Velocidade do teleporte",IslandTeleport.speedChoices,IslandTeleport.setSpeed)
+Hub.CreateButton(secTP,"Viajar para ilha",IslandTeleport.go)
+Hub.CreateButton(secTP,"Cancelar viagem",IslandTeleport.stop)
 local secRaid=Hub.CreateSection("Raid","MARINE FORT RAID")
 Hub.CreateToggle(secRaid,"Auto Raid (ondas, boss e baús)",Raid.setAuto)
 Hub.CreateButton(secRaid,"Teleportar para Raid",Raid.teleport)
@@ -2885,6 +2956,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V8.3] Sea Beast: M1 colado na cabeça, hover e acompanhamento")
+print("[GR Hub V8.4] Fishing icon corrigido e teleporte de ilhas com voo controlado")
 
 end)()
