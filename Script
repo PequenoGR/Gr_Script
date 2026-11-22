@@ -1851,7 +1851,7 @@ local Sea = (function()
                 if obj:IsA("Model") and not seen[obj] then
                     seen[obj]=true
                     local k=kind(obj)
-                    if k and alive(obj) and not (ignore and obj:IsDescendantOf(ignore:FindFirstChild("Temp") or Instance.new("Folder"))) then
+                    if k and alive(obj) and not (ignore and ignore:FindFirstChild("Temp") and obj:IsDescendantOf(ignore.Temp)) then
                         table.insert(found,{model=obj,kind=k})
                     end
                 end
