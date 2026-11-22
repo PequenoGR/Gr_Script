@@ -2162,6 +2162,272 @@ local Sea = (function()
 end)()
 
 
+
+local Raid = (function()
+    State.AutoRaid=false
+    local R={status="Desligado",state="-",fort="-",wave=0,waves=0,enemy=nil,chests={},retry={},skills=nil,lastSkill=0,skillIndex=0,lastM1=0,lastScan=0,lastVault=0,lastChests=0,lastChest=0,cache={},cacheFort=nil,dead=false,connection=nil,lastError=0}
+    local function area()
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        return areas and areas:FindFirstChild("Marine Forts")
+    end
+    local function fortInfo()
+        local a=area()
+        return a,a and a:GetAttribute("ActivePosition"),a and a:GetAttribute("RaidState"),a and a:GetAttribute("ActiveFort")
+    end
+    local function remote(cmd,arg)
+        if not dadosModulo or not dadosModulo.Network then return false end
+        return pcall(function()
+            if arg==nil then dadosModulo.Network:FireServer("FortRaid",cmd)
+            else dadosModulo.Network:FireServer("FortRaid",cmd,arg) end
+        end)
+    end
+    local function enemyRoot(model)
+        if not model or not model:IsA("Model") or not model.Parent then return nil end
+        local root=model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChild("HumanoidRootPart",true)
+        if not root or not root:IsA("BasePart") then return nil end
+        local hum=model:FindFirstChildWhichIsA("Humanoid",true)
+        if hum and hum.Health<=0 then return nil end
+        local health=model:GetAttribute("HandlerHealth")
+        if type(health)=="number" and health<=0 then return nil end
+        return root
+    end
+    local function raidEnemy(model)
+        local names={model.Name,model:GetAttribute("OriginalName"),model:GetAttribute("EnemyName"),model:GetAttribute("AlternativeName"),model:GetAttribute("DisplayName")}
+        local title=tostring(model:GetAttribute("Title") or ""):lower()
+        if title=="marine fort" or title=="marine fort commander" then return true end
+        for _,name in pairs(names) do
+            if type(name)=="string" then
+                local n=name:lower()
+                if n:find("fort marine",1,true) or n:find("fort commander",1,true) or n:find("marine swordsman",1,true)
+                or n:find("marine duelist",1,true) or n:find("marine gunner",1,true) or n:find("commodore garrick",1,true) then return true end
+            end
+        end
+        return false
+    end
+    local function scan(center)
+        if os.clock()-R.lastScan<1.2 then return end
+        R.lastScan=os.clock()
+        local found,seen={},{}
+        local play=workspace:FindFirstChild("Playability")
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local inside=ignore and ignore:FindFirstChild("Int")
+        local sources={}
+        if play then table.insert(sources,play) end
+        if inside then table.insert(sources,inside) end
+        if ignore then
+            local folder=ignore:FindFirstChild("Enemys") or ignore:FindFirstChild("Enemies")
+            if folder then table.insert(sources,folder) end
+        end
+        for _,src in ipairs(sources) do
+            for _,model in ipairs(src:GetDescendants()) do
+                if model:IsA("Model") and not seen[model] then
+                    seen[model]=true
+                    if raidEnemy(model) then
+                        local root=enemyRoot(model)
+                        if root and (root.Position-center).Magnitude<850 then table.insert(found,model) end
+                    end
+                end
+            end
+        end
+        R.cache=found
+    end
+    local function closest(center,root)
+        scan(center)
+        local best,distance=nil,math.huge
+        for _,model in ipairs(R.cache) do
+            local e=enemyRoot(model)
+            if e and (e.Position-center).Magnitude<850 then
+                local d=(e.Position-root.Position).Magnitude
+                if d<distance then distance=d;best=model end
+            end
+        end
+        return best
+    end
+    local function approach(root,point,key,radius)
+        if (root.Position-point).Magnitude>radius then definirDestino(point,key);return false end
+        if rota and rota.chave==key then liberarVoo() end
+        return true
+    end
+    local function ability()
+        if R.skills then return R.skills end
+        local mods=RS:FindFirstChild("Modules")
+        local combat=mods and mods:FindFirstChild("Combat")
+        local sys=combat and combat:FindFirstChild("AbilitySystem")
+        local client=sys and sys:FindFirstChild("AbilitySystem Client")
+        local module=client and client:FindFirstChild("SkillsSystem Client")
+        if module then
+            local ok,obj=pcall(require,module)
+            if ok and type(obj)=="table" then R.skills=obj end
+        end
+        return R.skills
+    end
+    local function attack(model,root)
+        R.enemy=model
+        local e=enemyRoot(model)
+        if not e then return end
+        local delta=root.Position-e.Position
+        local horizontal=Vector3.new(delta.X,0,delta.Z)
+        if horizontal.Magnitude<.01 then horizontal=Vector3.new(1,0,0) end
+        local point=e.Position+horizontal.Unit*6+Vector3.new(0,3,0)
+        R.status="Atacando "..model.Name
+        approach(root,point,"RaidEnemy",4)
+        if delta.Magnitude>15 then return end
+        local tool=equiparArma()
+        if not tool then R.status="Tool selecionada indisponível";return end
+        if os.clock()-R.lastM1>.22 then
+            R.lastM1=os.clock()
+            pcall(function()
+                local dir=Vector3.new(e.Position.X-root.Position.X,0,e.Position.Z-root.Position.Z)
+                if dir.Magnitude>.1 then root.CFrame=CFrame.lookAt(root.Position,root.Position+dir) end
+                tool:Activate()
+            end)
+            if CombatEvent then pcall(function() CombatEvent:FireServer("Activate",tool.Name) end) end
+        end
+        if os.clock()-R.lastSkill>1.8 then
+            R.lastSkill=os.clock()
+            local skills=ability()
+            if skills and skills.SkillUI and type(skills.SkillUI.RequestMobile)=="function" then
+                local keys={"Z","X","C","V","F"}
+                R.skillIndex=R.skillIndex%#keys+1
+                pcall(skills.SkillUI.RequestMobile,keys[R.skillIndex])
+            end
+        end
+    end
+    local function onEvent(action,fort,rarities,opened,positions)
+        if R.dead then return end
+        if action=="Chests" and type(fort)=="string" and type(rarities)=="table" and type(opened)=="table" and type(positions)=="table" then
+            if R.cacheFort~=fort then return end
+            local boxes={}
+            for id,rarity in ipairs(rarities) do
+                local cf=positions[id]
+                if opened[id]~=true and typeof(cf)=="CFrame" then boxes[id]={position=cf.Position,rarity=rarity} end
+            end
+            R.chests=boxes
+        elseif action=="ChestOpened" and type(fort)=="number" then
+            R.chests[fort]=nil
+            R.retry[fort]=nil
+        end
+    end
+    local function loot(a,fort,root)
+        if a:GetAttribute("VaultOpened")==false then
+            local data=a:FindFirstChild("Data")
+            local group=data and data:FindFirstChild(fort)
+            local door=group and group:FindFirstChild("BankDoor")
+            if not door or not door:IsA("Model") then R.status="Aguardando porta do cofre";return end
+            local center=door:GetBoundingBox().Position
+            local delta=root.Position-center
+            local flat=Vector3.new(delta.X,0,delta.Z)
+            if flat.Magnitude<.01 then flat=Vector3.new(1,0,0) end
+            local goal=center+flat.Unit*8+Vector3.new(0,2,0)
+            if not approach(root,goal,"RaidVault",5) then R.status="Indo ao cofre";return end
+            if (root.Position-center).Magnitude<=24 and os.clock()-R.lastVault>2.5 then
+                R.lastVault=os.clock()
+                if remote("OpenVault") then R.status="Abrindo cofre" end
+            end
+            return
+        end
+        if a:GetAttribute("VaultOpened")~=true then R.status="Aguardando cofre";return end
+        if os.clock()-R.lastChests>8 then
+            R.lastChests=os.clock()
+            remote("GetChests")
+        end
+        local chosen,id,distance=nil,nil,math.huge
+        for k,v in pairs(R.chests) do
+            if os.clock()>=(R.retry[k] or 0) then
+                local d=(root.Position-v.position).Magnitude
+                if d<distance then chosen=v;id=k;distance=d end
+            end
+        end
+        if not chosen then
+            R.status="Aguardando baús / Raid concluída"
+            if rota and type(rota.chave)=="string" and rota.chave:sub(1,4)=="Raid" then liberarVoo() end
+            return
+        end
+        if not approach(root,chosen.position+Vector3.new(0,3,0),"RaidChest",5) then
+            R.status="Indo até baú "..id
+            return
+        end
+        if distance<=10 and os.clock()-R.lastChest>1.2 then
+            R.lastChest=os.clock()
+            R.retry[id]=os.clock()+2.5
+            if remote("OpenChest",id) then R.status="Abrindo baú "..id end
+        end
+    end
+    local function tick()
+        if not State.AutoRaid then return end
+        if os.clock()<(FeatureState.islandUntil or 0) or emTransicao() then R.status="Aguardando transição";return end
+        local a,pos,mode,fort=fortInfo()
+        R.state=tostring(mode or "-")
+        R.fort=tostring(fort or "-")
+        R.wave=a and (tonumber(a:GetAttribute("RaidWave")) or 0) or 0
+        R.waves=a and (tonumber(a:GetAttribute("RaidWaves")) or 0) or 0
+        if not a or typeof(pos)~="Vector3" or type(fort)~="string" then
+            R.status="Aguardando Marine Fort Raid ativa";R.enemy=nil;return
+        end
+        if mode~="Open" and mode~="Completed" then
+            R.status="Raid não disponível: "..tostring(mode);return
+        end
+        if lerNivel(lerDados())<325 then R.status="Raid exige nível 325+";return end
+        if R.cacheFort~=fort then
+            R.cacheFort=fort;R.chests={};R.retry={};R.lastChests=0
+        end
+        local _,root,hum=character()
+        if not root or not hum or hum.Health<=0 then R.status="Personagem indisponível";return end
+        if mode=="Completed" then R.enemy=nil;loot(a,fort,root);return end
+        local enemy=closest(pos,root)
+        if enemy then attack(enemy,root);return end
+        R.enemy=nil
+        R.status=(R.wave>=R.waves and "Aguardando boss" or ("Aguardando onda "..R.wave.."/"..R.waves))
+        approach(root,pos+Vector3.new(0,14,0),"RaidFort",55)
+    end
+    function R.setAuto(v)
+        State.AutoRaid=v==true
+        if State.AutoRaid then
+            R.status="Procurando raid";R.lastScan=0;FeatureState.frutaOcupada=false;liberarVoo()
+        else
+            R.status="Desligado"
+            if rota and type(rota.chave)=="string" and rota.chave:sub(1,4)=="Raid" then liberarVoo() end
+        end
+    end
+    function R.teleport()
+        local _,pos,mode,fort=fortInfo()
+        if typeof(pos)~="Vector3" or (mode~="Open" and mode~="Completed") then
+            R.status="Nenhuma raid ativa para teleporte";warn("[GR Hub Raid]",R.status);return
+        end
+        local char,root,hum=character()
+        if not char or not root or not hum or hum.Health<=0 then return end
+        FeatureState.islandUntil=os.clock()+3
+        liberarVoo()
+        local ok=pcall(function()
+            char:PivotTo(CFrame.new(pos+Vector3.new(0,16,0))*root.CFrame.Rotation)
+            root.AssemblyLinearVelocity=Vector3.zero
+        end)
+        R.status=ok and ("TP Raid: "..tostring(fort)) or "Falha no TP"
+    end
+    function R.cleanup()
+        R.dead=true;State.AutoRaid=false
+        if typeof(R.connection)=="RBXScriptConnection" then pcall(function() R.connection:Disconnect() end) end
+    end
+    env.GRHubRaidCleanup=R.cleanup
+    if dadosModulo and dadosModulo.Network then
+        local ok,c=pcall(function() return dadosModulo.Network.OnClientEvent("FortRaid",onEvent) end)
+        if ok then R.connection=c end
+    end
+    task.spawn(function()
+        while running() and not R.dead do
+            local ok,err=pcall(tick)
+            if not ok then
+                R.status="Erro: "..tostring(err)
+                if os.clock()-R.lastError>4 then warn("[GR Hub Raid]",err);R.lastError=os.clock() end
+            end
+            task.wait(State.AutoRaid and .18 or 1.2)
+        end
+        R.cleanup()
+    end)
+    return R
+end)()
+
 local IslandTeleport = (function()
     local T = {chosen=nil,options={},status="Pronto"}
     local function areas()
