@@ -2086,9 +2086,9 @@ local Sea = (function()
             if rota and rota.chave=="SeaDodge" then rota.cruzeiro=math.max(root.Position.Y,S.dodgePoint.Y)+8 end
             return
         end
-        local goal=bp.Position+flat.Unit*22+Vector3.new(0,16,0)
-        S.status="Atacando "..tostring(kind(boss)).." Sea Beast"
-        if (root.Position-goal).Magnitude>10 then
+        local goal=bp.Position+flat.Unit*3+Vector3.new(0,2,0)
+        S.status=(dist>9 and "Colando no " or "Atacando ")..tostring(kind(boss)).." Sea Beast"
+        if (root.Position-goal).Magnitude>4 then
             definirDestino(goal,"SeaBoss")
             if rota and rota.chave=="SeaBoss" and dist<380 then
                 rota.cruzeiro=math.max(root.Position.Y,goal.Y)+12
@@ -2096,10 +2096,16 @@ local Sea = (function()
         elseif rota and rota.chave=="SeaBoss" then liberarVoo() end
         local tool=equiparArma()
         if not tool then S.attack="Tool não encontrada";return end
-        if dist<80 and os.clock()-S.m1>.25 then
+        if dist<9 and os.clock()-S.m1>.25 then
             S.m1=os.clock()
+            local face=Vector3.new(bp.Position.X-root.Position.X,0,bp.Position.Z-root.Position.Z)
+            if face.Magnitude>0.15 then
+                pcall(function() root.CFrame=CFrame.lookAt(root.Position,root.Position+face) end)
+            end
             pcall(function() tool:Activate() end)
             S.attack="M1 "..tool.Name
+        elseif dist>=9 then
+            S.attack="Aproximando para M1 ("..math.floor(dist).." studs)"
         end
         if dist<190 and os.clock()-S.skill>1.6 then
             S.skill=os.clock()
