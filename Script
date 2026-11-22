@@ -793,11 +793,11 @@ local function atualizarVoo(dt)
     prepararVoo(char,root,hum)
     if rota~=r then return end
     if os.clock()-ultimaColisao>0.5 then ultimaColisao=os.clock();atualizarColisao(char) end
-    if State.AutoRaid and r.chave=="RaidEnemy" and (root.Position-r.destino).Magnitude<=30 then
+    if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss")) and (root.Position-r.destino).Magnitude<=30 then
         if not FeatureState.raidHover or FeatureState.raidHover.Parent~=root then
             if FeatureState.raidHover then pcall(function() FeatureState.raidHover:Destroy() end) end
             local hold=Instance.new("BodyPosition")
-            hold.Name="GRHubRaidHover"
+            hold.Name="GRHubCombatHover"
             hold.MaxForce=Vector3.new(1e8,1e8,1e8)
             hold.P=30000
             hold.D=3500
@@ -807,7 +807,7 @@ local function atualizarVoo(dt)
         end
         FeatureState.raidHover.Position=r.destino
         if bodyVelocity then bodyVelocity.MaxForce=Vector3.zero end
-        faseVoo="Raid: parado em cima do inimigo"
+        faseVoo=r.chave=="SeaBoss" and "Sea: colado na cabeça" or "Raid: parado em cima do inimigo"
         return
     elseif FeatureState.raidHover then
         pcall(function() FeatureState.raidHover:Destroy() end)
@@ -1851,6 +1851,23 @@ local Sea = (function()
         if type(health)=="number" and health <= 0 then return nil end
         return p
     end
+    local function headPosition(m,bp)
+        for _,name in ipairs({"Head","HeadHitbox","head","jaw","jaw.002"}) do
+            local node=m:FindFirstChild(name,true)
+            if node then
+                if node:IsA("BasePart") then return node.Position end
+                if node:IsA("Attachment") or node:IsA("Bone") then
+                    return node.WorldCFrame.Position
+                end
+                if node:IsA("Model") then return node:GetPivot().Position end
+            end
+        end
+        local cf,size=m:GetBoundingBox()
+        if size.Y>0 and size.Y<260 then
+            return Vector3.new(bp.Position.X,math.max(bp.Position.Y,cf.Position.Y+size.Y*.34),bp.Position.Z)
+        end
+        return bp.Position
+    end
     local function clearMark(m)
         local a = S.marks[m]
         if not a then return end
@@ -2119,26 +2136,26 @@ local Sea = (function()
             if rota and rota.chave=="SeaDodge" then rota.cruzeiro=math.max(root.Position.Y,S.dodgePoint.Y)+8 end
             return
         end
-        local goal=bp.Position+flat.Unit*3+Vector3.new(0,2,0)
-        S.status=(dist>9 and "Colando no " or "Atacando ")..tostring(kind(boss)).." Sea Beast"
-        if (root.Position-goal).Magnitude>4 then
-            definirDestino(goal,"SeaBoss")
-            if rota and rota.chave=="SeaBoss" and dist<380 then
-                rota.cruzeiro=math.max(root.Position.Y,goal.Y)+12
-            end
-        elseif rota and rota.chave=="SeaBoss" then liberarVoo() end
+        local head=headPosition(boss,bp)
+        local goal=head+Vector3.new(0,1.15,0)
+        local headDistance=(root.Position-head).Magnitude
+        S.status=(headDistance>6 and "Colando na cabeça: " or "Atacando cabeça: ")..tostring(kind(boss)).." Sea Beast"
+        definirDestino(goal,"SeaBoss")
+        if rota and rota.chave=="SeaBoss" and headDistance>30 and dist<380 then
+            rota.cruzeiro=math.max(root.Position.Y,goal.Y)+5
+        end
         local tool=equiparArma()
         if not tool then S.attack="Tool não encontrada";return end
-        if dist<9 and os.clock()-S.m1>.25 then
+        if headDistance<7 and os.clock()-S.m1>.2 then
             S.m1=os.clock()
-            local face=Vector3.new(bp.Position.X-root.Position.X,0,bp.Position.Z-root.Position.Z)
+            local face=Vector3.new(head.X-root.Position.X,0,head.Z-root.Position.Z)
             if face.Magnitude>0.15 then
                 pcall(function() root.CFrame=CFrame.lookAt(root.Position,root.Position+face) end)
             end
             pcall(function() tool:Activate() end)
-            S.attack="M1 "..tool.Name
-        elseif dist>=9 then
-            S.attack="Aproximando para M1 ("..math.floor(dist).." studs)"
+            S.attack="M1 na cabeça "..tool.Name
+        elseif headDistance>=7 then
+            S.attack="Indo à cabeça para M1 ("..math.floor(headDistance).." studs)"
         end
         if dist<190 and os.clock()-S.skill>1.6 then
             S.skill=os.clock()
@@ -2184,7 +2201,7 @@ local Sea = (function()
                     warn("[GR Hub Sea]",err)
                 end
             end
-            task.wait(State.AutoSeaBeast and .14 or State.SeaBeastESP and .4 or 1)
+            task.wait(State.AutoSeaBeast and .085 or State.SeaBeastESP and .4 or 1)
         end
         S.cleanup()
     end)
@@ -2868,6 +2885,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V8.2] Raid Boss: desvio por avisos vermelhos, hover e M1 melhorados")
+print("[GR Hub V8.3] Sea Beast: M1 colado na cabeça, hover e acompanhamento")
 
 end)()
