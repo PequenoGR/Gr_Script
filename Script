@@ -40,7 +40,7 @@ local CAMPANHAS = {
 }
 
 
-local INTERFACE_URL = "https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/InterfaceScript"
+local INTERFACE_URL = "https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/InterfaceScript?v=boneco-v2"
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local RS = game:GetService("ReplicatedStorage")
@@ -2895,7 +2895,7 @@ while not env.GRHub and os.clock()-inicio<5 do task.wait(0.05) end
 local Hub=env.GRHub
 if not Hub then warn("[GR Hub] Biblioteca não expôs GRHub");parar();return end
 Hub.AddTab("Main","Main","rbxassetid://78780430891192")
-Hub.AddTab("Player","Player","person-standing")
+Hub.AddTab("Player","Player","boneco")
 Hub.AddTab("Fruits","Fruits","grape")
 Hub.AddTab("Fishing","Fishing","anchor")
 Hub.AddTab("Sea","Sea","waves")
