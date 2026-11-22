@@ -170,8 +170,34 @@ local function getIcon(value)
     return Icons[normalize(raw):gsub("^lucide%-","")] or (raw:match("^rbxasset") and raw) or (raw:match("^https?://") and raw) or nil
 end
 local function img(parent,id,props)
-    local p={BackgroundTransparency=1,Image=getIcon(id) or "",ImageColor3="white",ScaleType=Enum.ScaleType.Fit}
+    local resolved=getIcon(id)
+    local p={BackgroundTransparency=1,Image=resolved or "",ImageColor3="white",ScaleType=Enum.ScaleType.Fit}
     for k,v in pairs(props or {}) do p[k]=v end
+    if resolved=="rbxassetid://10734920149" then
+        p.Image=""
+        local container=create("ImageLabel",parent,p)
+        local pieces={}
+        local function piece(w,h,x,y,rotation,r)
+            local f=create("Frame",container,{Name="Boneco",Size=UDim2.fromOffset(w,h),Position=UDim2.new(.5,x,.5,y),AnchorPoint=Vector2.new(.5,.5),Rotation=rotation or 0,BackgroundColor3="white",BorderSizePixel=0})
+            round(f,r or 2)
+            table.insert(pieces,f)
+            return f
+        end
+        piece(5,5,0,-6,0,4)
+        piece(3,6,0,0,0,2)
+        piece(2,7,-4,-.5,-37,2)
+        piece(2,7,4,-.5,37,2)
+        piece(2,7,-2.1,5,25,2)
+        piece(2,7,2.1,5,-25,2)
+        local function recolor()
+            for _,f in ipairs(pieces) do
+                if f.Parent then f.BackgroundColor3=container.ImageColor3 end
+            end
+        end
+        container:GetPropertyChangedSignal("ImageColor3"):Connect(recolor)
+        recolor()
+        return container
+    end
     return create("ImageLabel",parent,p)
 end
 local gui=create("ScreenGui",playerGui,{Name="UniversalHub",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling})
