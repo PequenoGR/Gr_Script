@@ -754,7 +754,8 @@ end
 local function criarRota(root,destino,chave)
     local origem=root.Position
     local horizontal=Vector3.new(destino.X-origem.X,0,destino.Z-origem.Z).Magnitude
-    rota={root=root,chave=chave,destino=destino,cruzeiro=alturaSegura(origem,destino),fase=horizontal<20 and 3 or 1,concluida=false}
+    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge") and (math.max(origem.Y,destino.Y)+5) or alturaSegura(origem,destino)
+    rota={root=root,chave=chave,destino=destino,cruzeiro=cruzeiro,fase=horizontal<20 and 3 or 1,concluida=false}
     ultimoInicioRota=os.clock()
 end
 local function definirDestino(destino,chave)
@@ -2194,7 +2195,7 @@ end)()
 
 local Raid = (function()
     State.AutoRaid=false
-    local R={status="Desligado",state="-",fort="-",wave=0,waves=0,enemy=nil,chests={},retry={},skills=nil,lastSkill=0,skillIndex=0,lastM1=0,lastScan=0,lastVault=0,lastChests=0,lastChest=0,cache={},cacheFort=nil,dead=false,connection=nil,lastError=0}
+    local R={status="Desligado",state="-",fort="-",wave=0,waves=0,enemy=nil,chests={},retry={},skills=nil,lastSkill=0,skillIndex=0,lastM1=0,lastScan=0,lastVault=0,lastChests=0,lastChest=0,cache={},cacheFort=nil,dead=false,connection=nil,lastError=0,dodgeUntil=0,dodgePos=nil,lastDodge=0,dodgeReason="-",lastHP=nil,dodges=0,m1Count=0,skillCount=0,lastBoss=nil}
     local function area()
         local map=workspace:FindFirstChild("Map")
         local areas=map and map:FindFirstChild("Areas")
@@ -2261,6 +2262,11 @@ local Raid = (function()
         end
         R.cache=found
     end
+    local function isCommander(model)
+        if not model then return false end
+        local text=(tostring(model.Name).." "..tostring(model:GetAttribute("AlternativeName") or "").." "..tostring(model:GetAttribute("Title") or "")):lower()
+        return text:find("commodore garrick",1,true)~=nil or text:find("fort commander",1,true)~=nil
+    end
     local function closest(center,root)
         scan(center)
         local best,distance=nil,math.huge
@@ -2268,6 +2274,7 @@ local Raid = (function()
             local e=enemyRoot(model)
             if e and (e.Position-center).Magnitude<850 then
                 local d=(e.Position-root.Position).Magnitude
+                if R.wave>=R.waves and R.waves>0 and isCommander(model) then d-=500 end
                 if d<distance then distance=d;best=model end
             end
         end
@@ -2295,37 +2302,141 @@ local Raid = (function()
         end
         return R.skills
     end
+    local function warning(root,bossRoot)
+        local cam=workspace.CurrentCamera
+        local folder=cam and cam:FindFirstChild("BossTelegraphs")
+        if not folder or not bossRoot then return nil end
+        if (root.Position-bossRoot.Position).Magnitude>260 then return nil end
+        for _,part in ipairs(folder:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name=="Telegraph"
+                and (part.Position-bossRoot.Position).Magnitude<280
+                and (root.Position.Y-part.Position.Y)<55
+                and (root.Position.Y-part.Position.Y)>-18 then
+                local danger=false
+                local radius=0
+                if part.Shape==Enum.PartType.Cylinder then
+                    radius=math.max(part.Size.Y,part.Size.Z)*.5
+                    local dx=root.Position.X-part.Position.X
+                    local dz=root.Position.Z-part.Position.Z
+                    danger=(dx*dx+dz*dz)<(radius+7)^2
+                else
+                    local localPos=part.CFrame:PointToObjectSpace(root.Position)
+                    danger=math.abs(localPos.X)<part.Size.X*.5+7 and math.abs(localPos.Z)<part.Size.Z*.5+7
+                    radius=math.min(80,math.max(part.Size.X,part.Size.Z))
+                end
+                if danger then
+                    local away=Vector3.new(root.Position.X-part.Position.X,0,root.Position.Z-part.Position.Z)
+                    if away.Magnitude<1 then
+                        if part.Shape~=Enum.PartType.Cylinder and part.Size.Z>part.Size.X then
+                            away=part.CFrame.RightVector
+                        else
+                            away=Vector3.new(root.Position.X-bossRoot.Position.X,0,root.Position.Z-bossRoot.Position.Z)
+                        end
+                    end
+                    if away.Magnitude<.1 then away=Vector3.new(1,0,0) end
+                    return "Aviso vermelho do boss",away.Unit,math.clamp(radius+23,42,85)
+                end
+            end
+        end
+        return nil
+    end
+    local function evade(root,why,away,distance)
+        local now=os.clock()
+        if now-R.lastDodge<1.05 then return false end
+        R.lastDodge=now
+        R.dodges+=1
+        R.dodgeReason=why
+        R.dodgeUntil=now+0.95
+        local horizontal=Vector3.new(away.X,0,away.Z)
+        if horizontal.Magnitude<.1 then horizontal=Vector3.new(1,0,0) end
+        R.dodgePos=root.Position+horizontal.Unit*(distance or 50)+Vector3.new(0,9,0)
+        liberarVoo()
+        return true
+    end
+    local function attemptSkill(tool)
+        if os.clock()-R.lastSkill<1.3 then return end
+        local client=ability()
+        if not client then return end
+        local inputs={"Z","X","C","V","F"}
+        local selected
+        for _=1,#inputs do
+            R.skillIndex=R.skillIndex%#inputs+1
+            local key=inputs[R.skillIndex]
+            local valid=true
+            if client.Skills and type(client.Skills.GetByKey)=="function" then
+                local ok,result=pcall(function() return client.Skills:GetByKey(tool.Name,key) end)
+                valid=ok and result~=nil
+            end
+            if valid then selected=key;break end
+        end
+        if not selected then return end
+        R.lastSkill=os.clock()
+        local vim
+        pcall(function() vim=game:GetService("VirtualInputManager") end)
+        if vim then
+            local success=pcall(function()
+                vim:SendKeyEvent(true,Enum.KeyCode[selected],false,game)
+                task.delay(0.11,function()
+                    pcall(function() vim:SendKeyEvent(false,Enum.KeyCode[selected],false,game) end)
+                end)
+            end)
+            if success then R.skillCount+=1;return end
+        end
+        if client.SkillUI and type(client.SkillUI.RequestMobile)=="function" then
+            pcall(client.SkillUI.RequestMobile,selected)
+        end
+    end
     local function attack(model,root)
         R.enemy=model
         local e=enemyRoot(model)
         if not e then return end
-        local point=e.Position+Vector3.new(0,5,0)
-        R.status="Atacando por cima: "..model.Name
-        local perto=approach(root,point,"RaidEnemy",2.5)
+        local commander=isCommander(model)
+        local now=os.clock()
+        if commander then
+            local _,_,hum=character()
+            local threat,avoid,range=warning(root,e)
+            if hum and hum.MaxHealth>0 then
+                if R.lastBoss~=model then R.lastHP=hum.Health;R.lastBoss=model end
+                if R.lastHP and hum.Health<R.lastHP-math.max(9,hum.MaxHealth*.035) and not threat then
+                    threat="Dano do boss"
+                    avoid=Vector3.new(root.Position.X-e.Position.X,0,root.Position.Z-e.Position.Z)
+                    range=55
+                end
+                R.lastHP=hum.Health
+            end
+            if threat and now>=R.dodgeUntil then evade(root,threat,avoid,range) end
+        else
+            R.lastHP=nil
+            R.lastBoss=nil
+        end
+        if now<R.dodgeUntil and R.dodgePos then
+            R.status="Desviando: "..R.dodgeReason
+            definirDestino(R.dodgePos,"RaidDodge")
+            return
+        end
+        local forward=e.CFrame.LookVector
+        local lateral=Vector3.new(forward.X,0,forward.Z)
+        if lateral.Magnitude<.1 then lateral=Vector3.new(0,0,1) end
+        local point=e.Position+Vector3.new(0,4,0)-lateral.Unit*1.1
+        R.status=(commander and "Boss por cima: " or "Atacando por cima: ")..model.Name
+        local aligned=approach(root,point,"RaidEnemy",2.5)
         if rota and rota.chave=="RaidEnemy" and (root.Position-point).Magnitude<30 then
             rota.cruzeiro=math.max(root.Position.Y,point.Y)+2
         end
-        if not perto and (root.Position-point).Magnitude>7 then return end
+        if not aligned and (root.Position-point).Magnitude>9 then return end
         local tool=equiparArma()
         if not tool then R.status="Tool selecionada indisponível";return end
-        if os.clock()-R.lastM1>.22 then
+        local diff=e.Position-root.Position
+        local aim=Vector3.new(diff.X,0,diff.Z)
+        if aim.Magnitude>.1 then
+            pcall(function() root.CFrame=CFrame.lookAt(root.Position,root.Position+aim) end)
+        end
+        if (root.Position-e.Position).Magnitude<=12 and os.clock()-R.lastM1>.16 then
             R.lastM1=os.clock()
-            pcall(function()
-                local dir=Vector3.new(e.Position.X-root.Position.X,0,e.Position.Z-root.Position.Z)
-                if dir.Magnitude>.1 then root.CFrame=CFrame.lookAt(root.Position,root.Position+dir) end
-                tool:Activate()
-            end)
-            if CombatEvent then pcall(function() CombatEvent:FireServer("Activate",tool.Name) end) end
+            local ok=pcall(function() tool:Activate() end)
+            if ok then R.m1Count+=1 end
         end
-        if os.clock()-R.lastSkill>1.8 then
-            R.lastSkill=os.clock()
-            local skills=ability()
-            if skills and skills.SkillUI and type(skills.SkillUI.RequestMobile)=="function" then
-                local keys={"Z","X","C","V","F"}
-                R.skillIndex=R.skillIndex%#keys+1
-                pcall(skills.SkillUI.RequestMobile,keys[R.skillIndex])
-            end
-        end
+        attemptSkill(tool)
     end
     local function onEvent(action,fort,rarities,opened,positions)
         if R.dead then return end
@@ -2417,9 +2528,9 @@ local Raid = (function()
     function R.setAuto(v)
         State.AutoRaid=v==true
         if State.AutoRaid then
-            R.status="Procurando raid";R.lastScan=0;FeatureState.frutaOcupada=false;liberarVoo()
+            R.status="Procurando raid";R.lastScan=0;R.dodgeUntil=0;R.lastHP=nil;FeatureState.frutaOcupada=false;liberarVoo()
         else
-            R.status="Desligado"
+            R.status="Desligado";R.dodgeUntil=0;R.lastHP=nil
             if rota and type(rota.chave)=="string" and rota.chave:sub(1,4)=="Raid" then liberarVoo() end
         end
     end
@@ -2454,7 +2565,7 @@ local Raid = (function()
                 R.status="Erro: "..tostring(err)
                 if os.clock()-R.lastError>4 then warn("[GR Hub Raid]",err);R.lastError=os.clock() end
             end
-            task.wait(State.AutoRaid and .18 or 1.2)
+            task.wait(State.AutoRaid and .065 or 1.2)
         end
         R.cleanup()
     end)
@@ -2605,6 +2716,10 @@ local function copiarDebug()
         "Raid fort: "..tostring(Raid.fort),
         "Raid onda: "..tostring(Raid.wave).."/"..tostring(Raid.waves),
         "Raid alvo: "..tostring(Raid.enemy and Raid.enemy.Name),
+        "Raid ultimo ataque detectado: "..tostring(Raid.dodgeReason),
+        "Raid esquivas: "..tostring(Raid.dodges),
+        "Raid M1 tentados: "..tostring(Raid.m1Count),
+        "Raid skills tentadas: "..tostring(Raid.skillCount),
         "Ilha escolhida: "..tostring(IslandTeleport.chosen),
         "Ilha TP: "..tostring(IslandTeleport.status),
         "Auto Sea Beast: "..tostring(State.AutoSeaBeast),
@@ -2753,6 +2868,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V8.1] Auto Marine Fort Raid, ondas, boss, cofre e baús")
+print("[GR Hub V8.2] Raid Boss: desvio por avisos vermelhos, hover e M1 melhorados")
 
 end)()
