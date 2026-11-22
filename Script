@@ -2793,7 +2793,7 @@ end)()
 local FruitShopAuto = (function()
     local P={
         active=false,names={},chosen={},maxPrice=math.huge,keepGold=0,
-        allowReplace=false,stock={},status="Desligado",lastFetch=0,
+        allowReplace=false,stock={},stockLoaded=false,status="Desligado",lastFetch=-120,
         attempts=0,purchases=0,requesting=false,stopped=false,
         lastAttempt=0,lastCycle=nil,lastFruit="-",lastPrice=0
     }
@@ -2852,7 +2852,7 @@ local FruitShopAuto = (function()
     end
     local function loadStock(force)
         if P.requesting then return false end
-        if not force and os.clock()-P.lastFetch<55 then return #P.stock>0 end
+        if not force and os.clock()-P.lastFetch<55 then return P.stockLoaded end
         if not dadosModulo or not dadosModulo.Network then
             P.status="Rede da loja indisponível"
             return false
@@ -2868,6 +2868,7 @@ local FruitShopAuto = (function()
             return false
         end
         P.stock={}
+        P.stockLoaded=true
         for _,entry in ipairs(result) do
             if type(entry)=="table" and type(entry.FruitName)=="string" then
                 local price=tonumber(entry.Price)
@@ -2943,7 +2944,7 @@ local FruitShopAuto = (function()
     function P.setAuto(v)
         P.active=(v==true)
         P.status=P.active and "Procurando frutas selecionadas em estoque" or "Desligado"
-        if P.active then P.lastFetch=0 end
+        if P.active then P.lastFetch=-120;P.stockLoaded=false end
     end
     function P.showStock()
         task.spawn(function()
