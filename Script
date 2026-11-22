@@ -104,33 +104,46 @@ local FRUIT_COLOR = {
     Legendary=Color3.fromRGB(255,185,45),
     Mythical=Color3.fromRGB(255,65,105)
 }
-local frutasSelecionadas = {}
-for _, nome in ipairs(FRUIT_NAMES) do frutasSelecionadas[nome]=true end
-local contadorFrutas = 0
-local ultimoTPFruta, ultimaLojaFruta = 0, 0
-local alvoFruta, nomeFrutaAtual = nil, nil
-local espFrutas = {}
-local pastaFrutasCache, ultimaVarreduraFrutas, frutasVisiveis = nil, 0, {}
-local ultimoErroFruta = 0
-local statusFruta = "Desligado"
-local frutaOcupada = false
-local inicioTentativaFruta = 0
-local ultimoContatoFruta = 0
-local ultimoProgressoFruta = 0
-local distanciaAnteriorFruta = math.huge
-local faseFruta = "Parado"
-local frutaTPFeito = false
-local cooldownFrutasAte = 0
-local falhasFrutas = 0
-local blacklistFrutas = setmetatable({}, {__mode = "k"})
-local tipoToolSelecionado = "Sword"
-local STATS_NAMES = {"Strength","Endurance","Sword","Gun","DevilFruit"}
-local statSelecionado = "Sword"
-local ultimoUpgradeStats, ultimaQuantidadeStats, statusStats = 0, 0, "Desligado"
-local pescaHUD, pescaPeixe, pescaControle = nil, nil, nil
-local conexoesPesca = {}
-local pescandoAgora, ultimoLancamentoPesca, bloquearAtePesca = false, 0, 0
-local statusPesca, lastFishY = "Desligado", nil
+local FeatureState = {
+    frutasSelecionadas = {},
+    contadorFrutas = 0,
+    ultimoTPFruta = 0,
+    ultimaLojaFruta = 0,
+    alvoFruta = nil,
+    nomeFrutaAtual = nil,
+    espFrutas = {},
+    pastaFrutasCache = nil,
+    ultimaVarreduraFrutas = 0,
+    frutasVisiveis = {},
+    ultimoErroFruta = 0,
+    statusFruta = "Desligado",
+    frutaOcupada = false,
+    inicioTentativaFruta = 0,
+    ultimoContatoFruta = 0,
+    ultimoProgressoFruta = 0,
+    distanciaAnteriorFruta = math.huge,
+    faseFruta = "Parado",
+    frutaTPFeito = false,
+    cooldownFrutasAte = 0,
+    falhasFrutas = 0,
+    blacklistFrutas = setmetatable({}, {__mode = "k"}),
+    tipoToolSelecionado = "Sword",
+    STATS_NAMES = {"Strength","Endurance","Sword","Gun","DevilFruit"},
+    statSelecionado = "Sword",
+    ultimoUpgradeStats = 0,
+    ultimaQuantidadeStats = 0,
+    statusStats = "Desligado",
+    pescaHUD = nil,
+    pescaPeixe = nil,
+    pescaControle = nil,
+    conexoesPesca = {},
+    pescandoAgora = false,
+    ultimoLancamentoPesca = 0,
+    bloquearAtePesca = 0,
+    statusPesca = "Desligado",
+    lastFishY = nil,
+}
+for _, nome in ipairs(FRUIT_NAMES) do FeatureState.frutasSelecionadas[nome]=true end
 local modo, alturaInimigo, alturaVoo = MODOS[2], 6, 90
 local status, faseVoo = "Desligado", "Parado"
 local campanha, objetivo, alvo, destinoNPC
@@ -387,14 +400,14 @@ local function equiparArma()
     local char,root,hum=character()
     if not char or not hum or hum.Health<=0 then return nil end
     local equipada=char:FindFirstChildWhichIsA("Tool")
-    if equipada and tipoRealTool(equipada)==tipoToolSelecionado then
+    if equipada and tipoRealTool(equipada)==FeatureState.tipoToolSelecionado then
         return equipada
     end
     local bp=player:FindFirstChild("Backpack")
     local escolhida
     if bp then
         for _,item in ipairs(bp:GetChildren()) do
-            if item:IsA("Tool") and tipoRealTool(item)==tipoToolSelecionado then
+            if item:IsA("Tool") and tipoRealTool(item)==FeatureState.tipoToolSelecionado then
                 escolhida=item
                 break
             end
@@ -407,7 +420,7 @@ local function equiparArma()
     local ok=pcall(function() hum:EquipTool(escolhida) end)
     if not ok then return nil end
     local atual=char:FindFirstChildWhichIsA("Tool")
-    if atual and tipoRealTool(atual)==tipoToolSelecionado then
+    if atual and tipoRealTool(atual)==FeatureState.tipoToolSelecionado then
         return atual
     end
     return nil
@@ -418,7 +431,7 @@ local function selecionarTipoTool(v)
     if type(v)=="number" and TOOL_TYPES[v] then v=TOOL_TYPES[v].Valor end
     for _,opcao in ipairs(TOOL_TYPES) do
         if v==opcao.Valor then
-            tipoToolSelecionado=v
+            FeatureState.tipoToolSelecionado=v
             equiparArma()
             return
         end
@@ -1012,7 +1025,7 @@ local function buscarEAtacar()
     definirDestino(er.Position+Vector3.new(0,alturaInimigo,0),alvo)
 end
 local function atacar()
-    if not State.AutoFarmQuest or frutaOcupada or not alvo or not valido(alvo) then return end
+    if not State.AutoFarmQuest or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
     if emTransicao() or (campanha and campanha.ilha=="Volcano Island" and not dentroVulcao()) then return end
     local _,root,hum=character()
     if not root or not hum or hum.Health<=0 then return end
@@ -1042,7 +1055,7 @@ local function definirFarm(v)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
             local ok,err=pcall(function()
-                if not frutaOcupada and not pescandoAgora then
+                if not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
                     if os.clock()-ultimaQuest>0.3 then ultimaQuest=os.clock();advanceQuest() end
                     buscarEAtacar()
                 end
@@ -1053,7 +1066,7 @@ local function definirFarm(v)
     end)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
-            if not pescandoAgora then pcall(atacar) end
+            if not FeatureState.pescandoAgora then pcall(atacar) end
             task.wait(math.max(modo.Ataque,0.02))
         end
     end)
@@ -1074,10 +1087,10 @@ local function antiAfk(v)
 end
 local limparFrutasESPGeral
 local function pastaFrutas()
-    if pastaFrutasCache and pastaFrutasCache.Parent then return pastaFrutasCache end
+    if FeatureState.pastaFrutasCache and FeatureState.pastaFrutasCache.Parent then return FeatureState.pastaFrutasCache end
     local p=workspace:FindFirstChild("Playability")
-    pastaFrutasCache=p and p:FindFirstChild("DroppedTools")
-    return pastaFrutasCache
+    FeatureState.pastaFrutasCache=p and p:FindFirstChild("DroppedTools")
+    return FeatureState.pastaFrutasCache
 end
 
 local function nomeDaFruta(item)
@@ -1112,33 +1125,33 @@ local function handleFruta(item)
 end
 
 local function atualizarListaFrutas()
-    if os.clock()-ultimaVarreduraFrutas<0.5 then return end
-    ultimaVarreduraFrutas=os.clock()
-    table.clear(frutasVisiveis)
+    if os.clock()-FeatureState.ultimaVarreduraFrutas<0.5 then return end
+    FeatureState.ultimaVarreduraFrutas=os.clock()
+    table.clear(FeatureState.frutasVisiveis)
     local folder=pastaFrutas()
     if not folder then return end
     for _,item in ipairs(folder:GetChildren()) do
         if frutaValida(item) and handleFruta(item) then
-            table.insert(frutasVisiveis,item)
+            table.insert(FeatureState.frutasVisiveis,item)
         end
     end
 end
 
 local function apagarESP(item)
-    local info=espFrutas[item]
+    local info=FeatureState.espFrutas[item]
     if not info then return end
-    espFrutas[item]=nil
+    FeatureState.espFrutas[item]=nil
     for _,obj in ipairs(info.objects) do
         pcall(function() if obj and obj.Parent then obj:Destroy() end end)
     end
 end
 
 limparFrutasESPGeral=function()
-    for item in pairs(espFrutas) do apagarESP(item) end
+    for item in pairs(FeatureState.espFrutas) do apagarESP(item) end
 end
 
 local function adicionarESP(item)
-    if espFrutas[item] then return end
+    if FeatureState.espFrutas[item] then return end
     local h=handleFruta(item)
     local name=nomeDaFruta(item)
     if not h or not name then return end
@@ -1171,80 +1184,80 @@ local function adicionarESP(item)
     text.TextSize=13
     text.TextWrapped=true
     text.Parent=bb
-    espFrutas[item]={objects={glow,bb},label=text,handle=h,name=name}
+    FeatureState.espFrutas[item]={objects={glow,bb},label=text,handle=h,name=name}
 end
 
 local function atualizarESP()
     if not State.FruitESP then
-        if next(espFrutas) then limparFrutasESPGeral() end
+        if next(FeatureState.espFrutas) then limparFrutasESPGeral() end
         return
     end
     local _,root=character()
-    for _,item in ipairs(frutasVisiveis) do adicionarESP(item) end
-    for item,info in pairs(espFrutas) do
+    for _,item in ipairs(FeatureState.frutasVisiveis) do adicionarESP(item) end
+    for item,info in pairs(FeatureState.espFrutas) do
         if not frutaValida(item) or not item:IsDescendantOf(pastaFrutas() or workspace) then
             apagarESP(item)
         elseif info.label and info.label.Parent and info.handle.Parent then
             local dist=root and math.floor((root.Position-info.handle.Position).Magnitude) or 0
-            info.label.Text=(frutasSelecionadas[info.name] and "✓ " or "")
+            info.label.Text=(FeatureState.frutasSelecionadas[info.name] and "✓ " or "")
                 ..info.name.." Fruit ["..FRUIT_RARITY[info.name].."]\n"..dist.." studs"
         end
     end
 end
 
 local function finalizarTentativaFruta(bloquear, pausa)
-    local antiga = alvoFruta
+    local antiga = FeatureState.alvoFruta
     if rota and antiga and rota.chave == antiga then
         liberarVoo()
     end
     if bloquear and antiga then
-        blacklistFrutas[antiga] = os.clock() + 18
-        falhasFrutas += 1
-        if falhasFrutas >= 2 then
-            cooldownFrutasAte = os.clock() + 10
-            falhasFrutas = 0
+        FeatureState.blacklistFrutas[antiga] = os.clock() + 18
+        FeatureState.falhasFrutas += 1
+        if FeatureState.falhasFrutas >= 2 then
+            FeatureState.cooldownFrutasAte = os.clock() + 10
+            FeatureState.falhasFrutas = 0
         end
     elseif pausa and pausa > 0 then
-        cooldownFrutasAte = os.clock() + pausa
+        FeatureState.cooldownFrutasAte = os.clock() + pausa
     end
-    alvoFruta = nil
-    nomeFrutaAtual = nil
-    frutaOcupada = false
-    inicioTentativaFruta = 0
-    ultimoContatoFruta = 0
-    ultimoProgressoFruta = 0
-    distanciaAnteriorFruta = math.huge
-    frutaTPFeito = false
-    faseFruta = "Parado"
+    FeatureState.alvoFruta = nil
+    FeatureState.nomeFrutaAtual = nil
+    FeatureState.frutaOcupada = false
+    FeatureState.inicioTentativaFruta = 0
+    FeatureState.ultimoContatoFruta = 0
+    FeatureState.ultimoProgressoFruta = 0
+    FeatureState.distanciaAnteriorFruta = math.huge
+    FeatureState.frutaTPFeito = false
+    FeatureState.faseFruta = "Parado"
 end
 
 local function setFrutasEscolhidas(lista)
     finalizarTentativaFruta(false, 0)
-    table.clear(frutasSelecionadas)
+    table.clear(FeatureState.frutasSelecionadas)
     if type(lista) ~= "table" then return end
     for _, v in ipairs(lista) do
         local s = type(v) == "table" and (v.Name or v.Value) or v
         if type(s) == "string" then
             for _, name in ipairs(FRUIT_NAMES) do
                 if s == name then
-                    frutasSelecionadas[name] = true
+                    FeatureState.frutasSelecionadas[name] = true
                     break
                 end
             end
         end
     end
-    cooldownFrutasAte = 0
+    FeatureState.cooldownFrutasAte = 0
 end
 
 local function encontrarFruta(root)
     local escolhida, menor = nil, math.huge
     local agora = os.clock()
-    for _, item in ipairs(frutasVisiveis) do
+    for _, item in ipairs(FeatureState.frutasVisiveis) do
         local name = nomeDaFruta(item)
         local h = handleFruta(item)
-        if name and h and frutasSelecionadas[name]
+        if name and h and FeatureState.frutasSelecionadas[name]
             and h.Position.Y >= -250
-            and (not blacklistFrutas[item] or agora >= blacklistFrutas[item]) then
+            and (not FeatureState.blacklistFrutas[item] or agora >= FeatureState.blacklistFrutas[item]) then
             local dist = (root.Position - h.Position).Magnitude
             if dist < menor then
                 escolhida, menor = item, dist
@@ -1323,9 +1336,9 @@ local function coletarFruta(item)
     local distancia = (root.Position - handle.Position).Magnitude
     local agora = os.clock()
 
-    if not frutaTPFeito then
-        frutaTPFeito = true
-        faseFruta = "TP inicial"
+    if not FeatureState.frutaTPFeito then
+        FeatureState.frutaTPFeito = true
+        FeatureState.faseFruta = "TP inicial"
         if rota then liberarVoo() end
         pcall(function()
             root.AssemblyLinearVelocity = Vector3.zero
@@ -1336,14 +1349,14 @@ local function coletarFruta(item)
     end
 
     if distancia > 10 then
-        faseFruta = "Voo até a fruta"
-        statusFruta = "Indo até " .. tostring(nomeFrutaAtual)
+        FeatureState.faseFruta = "Voo até a fruta"
+        FeatureState.statusFruta = "Indo até " .. tostring(FeatureState.nomeFrutaAtual)
         definirDestino(destino, item)
     else
-        faseFruta = "Tentando coletar"
-        statusFruta = "Coletando " .. tostring(nomeFrutaAtual)
-        if agora - ultimoContatoFruta >= 0.65 then
-            ultimoContatoFruta = agora
+        FeatureState.faseFruta = "Tentando coletar"
+        FeatureState.statusFruta = "Coletando " .. tostring(FeatureState.nomeFrutaAtual)
+        if agora - FeatureState.ultimoContatoFruta >= 0.65 then
+            FeatureState.ultimoContatoFruta = agora
             tocarFruta(item, handle, char, root, humanoid)
         end
     end
@@ -1364,7 +1377,7 @@ local function remoteStoreFruit()
 end
 
 local function guardarFruta()
-    if not State.AutoStoreFruit or os.clock()-ultimaLojaFruta<2.5 then return end
+    if not State.AutoStoreFruit or os.clock()-FeatureState.ultimaLojaFruta<2.5 then return end
     local char,_,hum=character()
     if not char or not hum or hum.Health<=0 then return end
     if State.AutoFarmQuest and not State.AutoFarmFruit then return end
@@ -1380,40 +1393,40 @@ local function guardarFruta()
     if item.Parent~=char then
         pcall(function() hum:EquipTool(item) end)
         if item.Parent~=char then
-            statusFruta="Aguardando equipar "..item.Name
+            FeatureState.statusFruta="Aguardando equipar "..item.Name
             return
         end
     end
-    ultimaLojaFruta=os.clock()
+    FeatureState.ultimaLojaFruta=os.clock()
     local ok=remoteStoreFruit()
     if ok then
-        statusFruta="Solicitado guardar: "..item.Name
+        FeatureState.statusFruta="Solicitado guardar: "..item.Name
     else
-        statusFruta="Remoto ToolsData/Store indisponível"
+        FeatureState.statusFruta="Remoto ToolsData/Store indisponível"
     end
 end
 
 local function atualizarFarmFruta()
     if not State.AutoFarmFruit then
-        frutaOcupada = false
+        FeatureState.frutaOcupada = false
         return
     end
 
     if emTransicao() then
         finalizarTentativaFruta(false, 0)
-        statusFruta = "Aguardando transição"
+        FeatureState.statusFruta = "Aguardando transição"
         return
     end
 
     if dentroVulcao() then
         finalizarTentativaFruta(false, 0)
-        statusFruta = "Interior: Auto Quest continua até sair"
+        FeatureState.statusFruta = "Interior: Auto Quest continua até sair"
         return
     end
 
-    if not next(frutasSelecionadas) then
+    if not next(FeatureState.frutasSelecionadas) then
         finalizarTentativaFruta(false, 0)
-        statusFruta = "Nenhuma fruta selecionada"
+        FeatureState.statusFruta = "Nenhuma fruta selecionada"
         return
     end
 
@@ -1424,70 +1437,70 @@ local function atualizarFarmFruta()
     end
 
     local agora = os.clock()
-    if agora < cooldownFrutasAte then
-        frutaOcupada = false
-        statusFruta = "Aguardando nova tentativa; Quest liberada"
+    if agora < FeatureState.cooldownFrutasAte then
+        FeatureState.frutaOcupada = false
+        FeatureState.statusFruta = "Aguardando nova tentativa; Quest liberada"
         return
     end
 
     local folder = pastaFrutas()
-    if alvoFruta and (not folder or not alvoFruta:IsDescendantOf(folder)) then
-        if frutaNoInventario(alvoFruta, nomeFrutaAtual) then
-            contadorFrutas += 1
-            falhasFrutas = 0
-            statusFruta = "Fruta adquirida: " .. tostring(nomeFrutaAtual)
+    if FeatureState.alvoFruta and (not folder or not FeatureState.alvoFruta:IsDescendantOf(folder)) then
+        if frutaNoInventario(FeatureState.alvoFruta, FeatureState.nomeFrutaAtual) then
+            FeatureState.contadorFrutas += 1
+            FeatureState.falhasFrutas = 0
+            FeatureState.statusFruta = "Fruta adquirida: " .. tostring(FeatureState.nomeFrutaAtual)
             finalizarTentativaFruta(false, 1)
         else
-            statusFruta = "Fruta desapareceu do mapa"
+            FeatureState.statusFruta = "Fruta desapareceu do mapa"
             finalizarTentativaFruta(false, 2)
         end
         return
     end
 
-    if alvoFruta and (not frutaValida(alvoFruta) or not handleFruta(alvoFruta)) then
+    if FeatureState.alvoFruta and (not frutaValida(FeatureState.alvoFruta) or not handleFruta(FeatureState.alvoFruta)) then
         finalizarTentativaFruta(true, 0)
         return
     end
 
-    if not alvoFruta then
-        alvoFruta = encontrarFruta(root)
-        if not alvoFruta then
-            frutaOcupada = false
-            statusFruta = "Sem frutas elegíveis; Auto Quest continua"
+    if not FeatureState.alvoFruta then
+        FeatureState.alvoFruta = encontrarFruta(root)
+        if not FeatureState.alvoFruta then
+            FeatureState.frutaOcupada = false
+            FeatureState.statusFruta = "Sem frutas elegíveis; Auto Quest continua"
             return
         end
-        nomeFrutaAtual = nomeDaFruta(alvoFruta)
-        inicioTentativaFruta = agora
-        ultimoProgressoFruta = agora
-        ultimoContatoFruta = 0
-        distanciaAnteriorFruta = math.huge
-        frutaTPFeito = false
-        faseFruta = "Selecionada"
-        frutaOcupada = true
+        FeatureState.nomeFrutaAtual = nomeDaFruta(FeatureState.alvoFruta)
+        FeatureState.inicioTentativaFruta = agora
+        FeatureState.ultimoProgressoFruta = agora
+        FeatureState.ultimoContatoFruta = 0
+        FeatureState.distanciaAnteriorFruta = math.huge
+        FeatureState.frutaTPFeito = false
+        FeatureState.faseFruta = "Selecionada"
+        FeatureState.frutaOcupada = true
         if rota then liberarVoo() end
     end
 
-    frutaOcupada = true
-    status = "Buscando fruta: " .. tostring(nomeFrutaAtual)
-    local handle = handleFruta(alvoFruta)
+    FeatureState.frutaOcupada = true
+    status = "Buscando fruta: " .. tostring(FeatureState.nomeFrutaAtual)
+    local handle = handleFruta(FeatureState.alvoFruta)
     if not handle then finalizarTentativaFruta(true, 0); return end
 
     local distancia = (root.Position - handle.Position).Magnitude
-    if distancia < distanciaAnteriorFruta - 3 then
-        ultimoProgressoFruta = agora
+    if distancia < FeatureState.distanciaAnteriorFruta - 3 then
+        FeatureState.ultimoProgressoFruta = agora
     end
-    distanciaAnteriorFruta = distancia
+    FeatureState.distanciaAnteriorFruta = distancia
 
     local limite = math.clamp(distancia / math.max(modo.Velocidade, 50) * 2 + 8, 10, 40)
-    if agora - inicioTentativaFruta > limite
-        or (agora - ultimoProgressoFruta > 5 and distancia > 12)
-        or (distancia <= 12 and agora - inicioTentativaFruta > 7) then
-        statusFruta = "Não foi possível coletar " .. tostring(nomeFrutaAtual) .. "; Quest liberada"
+    if agora - FeatureState.inicioTentativaFruta > limite
+        or (agora - FeatureState.ultimoProgressoFruta > 5 and distancia > 12)
+        or (distancia <= 12 and agora - FeatureState.inicioTentativaFruta > 7) then
+        FeatureState.statusFruta = "Não foi possível coletar " .. tostring(FeatureState.nomeFrutaAtual) .. "; Quest liberada"
         finalizarTentativaFruta(true, 0)
         return
     end
 
-    coletarFruta(alvoFruta)
+    coletarFruta(FeatureState.alvoFruta)
 end
 
 local function definirFarmFruta(v)
@@ -1495,13 +1508,13 @@ local function definirFarmFruta(v)
     if novo == State.AutoFarmFruit then return end
     State.AutoFarmFruit = novo
     finalizarTentativaFruta(false, 0)
-    cooldownFrutasAte = 0
-    falhasFrutas = 0
-    ultimaVarreduraFrutas = 0
+    FeatureState.cooldownFrutasAte = 0
+    FeatureState.falhasFrutas = 0
+    FeatureState.ultimaVarreduraFrutas = 0
     if novo then
-        statusFruta = "Procurando frutas escolhidas"
+        FeatureState.statusFruta = "Procurando frutas escolhidas"
     else
-        statusFruta = "Desligado"
+        FeatureState.statusFruta = "Desligado"
         if State.AutoFarmQuest then ultimaQuest = 0 end
     end
 end
@@ -1513,78 +1526,78 @@ end
 
 local function definirStoreFruta(v)
     State.AutoStoreFruit=toggle(v,State.AutoStoreFruit)
-    ultimaLojaFruta=0
+    FeatureState.ultimaLojaFruta=0
 end
 
 local function mudarAutoStats(v)
     State.AutoStats=toggle(v,State.AutoStats)
-    ultimoUpgradeStats=0
-    statusStats=State.AutoStats and "Ativado" or "Desligado"
+    FeatureState.ultimoUpgradeStats=0
+    FeatureState.statusStats=State.AutoStats and "Ativado" or "Desligado"
 end
 local function escolherStat(v)
     if type(v)=="table" then v=v.Name or v.Value end
     if type(v)~="string" then return end
-    for _,nome in ipairs(STATS_NAMES) do
-        if v==nome then statSelecionado=v;ultimoUpgradeStats=0;return end
+    for _,nome in ipairs(FeatureState.STATS_NAMES) do
+        if v==nome then FeatureState.statSelecionado=v;FeatureState.ultimoUpgradeStats=0;return end
     end
 end
 local function atualizarAutoStats()
     if not State.AutoStats or not running() then return end
-    if os.clock()-ultimoUpgradeStats<2.5 then return end
-    ultimoUpgradeStats=os.clock()
+    if os.clock()-FeatureState.ultimoUpgradeStats<2.5 then return end
+    FeatureState.ultimoUpgradeStats=os.clock()
     local d=lerDados()
     local stat=d and d.Statistics
     local bal=mainModulo and mainModulo.BalancingFeatures
     local network=dadosModulo and dadosModulo.Network
     if type(stat)~="table" or not bal or not network or type(network.FireServer)~="function" then
-        statusStats="Dados de Stats indisponíveis"
+        FeatureState.statusStats="Dados de Stats indisponíveis"
         return
     end
     local nivel=tonumber(stat.Level)
     local porNivel=tonumber(bal.PointsPerLevel)
     local limite=tonumber(bal.MaxLevel)
     if not nivel or not porNivel or porNivel<=0 or not limite then
-        statusStats="Limites de Stats indisponíveis"
+        FeatureState.statusStats="Limites de Stats indisponíveis"
         return
     end
     local total=0
-    for _,nome in ipairs(STATS_NAMES) do
+    for _,nome in ipairs(FeatureState.STATS_NAMES) do
         total+=tonumber(stat[nome]) or 1
     end
-    local gastos=math.max(0,total-#STATS_NAMES)
+    local gastos=math.max(0,total-#FeatureState.STATS_NAMES)
     local disponiveis=math.max(0,math.floor((nivel-1)*porNivel-gastos))
-    local atual=tonumber(stat[statSelecionado]) or 1
+    local atual=tonumber(stat[FeatureState.statSelecionado]) or 1
     local quantidade=math.min(disponiveis,math.max(0,math.floor(limite-atual)))
     if quantidade<1 then
-        statusStats=disponiveis==0 and "Sem pontos disponíveis" or (statSelecionado.." no limite")
+        FeatureState.statusStats=disponiveis==0 and "Sem pontos disponíveis" or (FeatureState.statSelecionado.." no limite")
         return
     end
     local ok,erro=pcall(function()
-        network:FireServer("StatisticsData","UpgradeStats",{[statSelecionado]=quantidade})
+        network:FireServer("StatisticsData","UpgradeStats",{[FeatureState.statSelecionado]=quantidade})
     end)
     if ok then
-        ultimaQuantidadeStats=quantidade
-        statusStats="Enviado: "..quantidade.." em "..statSelecionado
+        FeatureState.ultimaQuantidadeStats=quantidade
+        FeatureState.statusStats="Enviado: "..quantidade.." em "..FeatureState.statSelecionado
     else
-        statusStats="Erro: "..tostring(erro)
+        FeatureState.statusStats="Erro: "..tostring(erro)
     end
 end
 local function mudarAutoFishing(v)
     State.AutoFishing=toggle(v,State.AutoFishing)
-    statusPesca=State.AutoFishing and "Aguardando minigame" or "Desligado"
-    if not State.AutoFishing then pescandoAgora=false;bloquearAtePesca=0 end
+    FeatureState.statusPesca=State.AutoFishing and "Aguardando minigame" or "Desligado"
+    if not State.AutoFishing then FeatureState.pescandoAgora=false;FeatureState.bloquearAtePesca=0 end
 end
 local function mudarAutoCastFishing(v)
     State.AutoCastFishing=toggle(v,State.AutoCastFishing)
-    ultimoLancamentoPesca=0
+    FeatureState.ultimoLancamentoPesca=0
 end
 local function limparConexoesPesca()
-    for _,c in ipairs(conexoesPesca) do pcall(function() c:Disconnect() end) end
-    table.clear(conexoesPesca)
-    pescaHUD,pescaPeixe,pescaControle=nil,nil,nil
+    for _,c in ipairs(FeatureState.conexoesPesca) do pcall(function() c:Disconnect() end) end
+    table.clear(FeatureState.conexoesPesca)
+    FeatureState.pescaHUD,FeatureState.pescaPeixe,FeatureState.pescaControle=nil,nil,nil
 end
 local function obterFishingHUD()
-    if pescaHUD and pescaHUD.Parent then return pescaHUD end
+    if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent then return FeatureState.pescaHUD end
     local pg=player:FindFirstChild("PlayerGui")
     if not pg then return nil end
     local screen=pg:FindFirstChild("ScreenGuis")
@@ -1599,44 +1612,44 @@ local function obterFishingHUD()
 end
 local function sincronizarBarraVerde()
     if not State.AutoFishing or not running() then return end
-    local hud=pescaHUD
-    local peixe=pescaPeixe
-    local controle=pescaControle
+    local hud=FeatureState.pescaHUD
+    local peixe=FeatureState.pescaPeixe
+    local controle=FeatureState.pescaControle
     if not hud or not hud.Parent or not hud.Visible or not peixe or not peixe.Parent or not controle or not controle.Parent then return end
     local y=math.clamp(peixe.Position.Y.Scale,0.18,0.82)
     local p=controle.Position
     if math.abs(p.Y.Scale-y)>0.00001 or p.Y.Offset~=0 then
         controle.Position=UDim2.new(p.X.Scale,p.X.Offset,y,0)
     end
-    lastFishY=y
-    statusPesca="Barra acompanhando peixe"
+    FeatureState.lastFishY=y
+    FeatureState.statusPesca="Barra acompanhando peixe"
 end
 local function monitorarBarraPesca()
     if not State.AutoFishing then
-        if pescaHUD then limparConexoesPesca() end
-        pescandoAgora=false
+        if FeatureState.pescaHUD then limparConexoesPesca() end
+        FeatureState.pescandoAgora=false
         return
     end
     local hud=obterFishingHUD()
-    if hud~=pescaHUD or (hud and (not pescaPeixe or not pescaControle)) then
+    if hud~=FeatureState.pescaHUD or (hud and (not FeatureState.pescaPeixe or not FeatureState.pescaControle)) then
         limparConexoesPesca()
-        pescaHUD=hud
+        FeatureState.pescaHUD=hud
         local gameplay=hud and hud:FindFirstChild("GameplayElements")
-        pescaPeixe=gameplay and gameplay:FindFirstChild("Fish")
-        pescaControle=gameplay and gameplay:FindFirstChild("Control")
-        if pescaPeixe and pescaControle then
-            table.insert(conexoesPesca,pescaPeixe:GetPropertyChangedSignal("Position"):Connect(sincronizarBarraVerde))
-            table.insert(conexoesPesca,pescaControle:GetPropertyChangedSignal("Position"):Connect(sincronizarBarraVerde))
+        FeatureState.pescaPeixe=gameplay and gameplay:FindFirstChild("Fish")
+        FeatureState.pescaControle=gameplay and gameplay:FindFirstChild("Control")
+        if FeatureState.pescaPeixe and FeatureState.pescaControle then
+            table.insert(FeatureState.conexoesPesca,FeatureState.pescaPeixe:GetPropertyChangedSignal("Position"):Connect(sincronizarBarraVerde))
+            table.insert(FeatureState.conexoesPesca,FeatureState.pescaControle:GetPropertyChangedSignal("Position"):Connect(sincronizarBarraVerde))
         end
     end
-    local visivel=pescaHUD and pescaHUD.Parent and pescaHUD.Visible
-    local estavaPescando=pescandoAgora
-    pescandoAgora=(visivel==true or os.clock()<bloquearAtePesca)
+    local visivel=FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible
+    local estavaPescando=FeatureState.pescandoAgora
+    FeatureState.pescandoAgora=(visivel==true or os.clock()<FeatureState.bloquearAtePesca)
     if visivel then
         if not estavaPescando then liberarVoo() end
         sincronizarBarraVerde()
-    elseif not pescandoAgora then
-        statusPesca=pescaHUD and "Aguardando peixe morder" or "HUD de pesca não carregado"
+    elseif not FeatureState.pescandoAgora then
+        FeatureState.statusPesca=FeatureState.pescaHUD and "Aguardando peixe morder" or "HUD de pesca não carregado"
     end
 end
 local function encontrarVaraPesca()
@@ -1658,15 +1671,15 @@ local function encontrarVaraPesca()
 end
 local function atualizarLancamentoPesca()
     if not State.AutoFishing or not State.AutoCastFishing or not running() then return end
-    if pescaHUD and pescaHUD.Parent and pescaHUD.Visible then return end
-    if os.clock()<bloquearAtePesca or os.clock()-ultimoLancamentoPesca<8 then return end
+    if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible then return end
+    if os.clock()<FeatureState.bloquearAtePesca or os.clock()-FeatureState.ultimoLancamentoPesca<8 then return end
     local _,root,hum=character()
-    if not root or not hum or hum.Health<=0 or frutaOcupada then return end
+    if not root or not hum or hum.Health<=0 or FeatureState.frutaOcupada then return end
     local vara=encontrarVaraPesca()
-    if not vara then statusPesca="Fishing Rod não encontrada";return end
-    ultimoLancamentoPesca=os.clock()
-    bloquearAtePesca=os.clock()+1.5
-    pescandoAgora=true
+    if not vara then FeatureState.statusPesca="Fishing Rod não encontrada";return end
+    FeatureState.ultimoLancamentoPesca=os.clock()
+    FeatureState.bloquearAtePesca=os.clock()+1.5
+    FeatureState.pescandoAgora=true
     liberarVoo()
     if vara.Parent~=player.Character then
         pcall(function() hum:EquipTool(vara) end)
@@ -1674,21 +1687,21 @@ local function atualizarLancamentoPesca()
     end
     if vara.Parent==player.Character then
         local ok=pcall(function() vara:Activate() end)
-        statusPesca=ok and "Lançando vara; aguardando peixe" or "Falha ao lançar vara"
+        FeatureState.statusPesca=ok and "Lançando vara; aguardando peixe" or "Falha ao lançar vara"
     else
-        statusPesca="Não foi possível equipar vara"
+        FeatureState.statusPesca="Não foi possível equipar vara"
     end
 end
 local function parar()
     State.AutoFarmQuest=false
     State.AutoFarmFruit=false
-    frutaOcupada=false
+    FeatureState.frutaOcupada=false
     State.FruitESP=false
     State.AutoStoreFruit=false
     State.AutoStats=false
     State.AutoFishing=false
     State.AutoCastFishing=false
-    pescandoAgora=false
+    FeatureState.pescandoAgora=false
     limparConexoesPesca()
     loopId+=1
     liberarVoo()
@@ -1736,10 +1749,10 @@ task.spawn(function()
             if State.AutoFarmFruit then atualizarFarmFruta() end
             if State.AutoStoreFruit then guardarFruta() end
         end)
-        if not ok and os.clock()-ultimoErroFruta>3 then
-            ultimoErroFruta=os.clock()
+        if not ok and os.clock()-FeatureState.ultimoErroFruta>3 then
+            FeatureState.ultimoErroFruta=os.clock()
             warn("[GR Hub Fruits]",erro)
-            statusFruta="Erro: "..tostring(erro)
+            FeatureState.statusFruta="Erro: "..tostring(erro)
         end
         task.wait(0.25)
     end
@@ -1755,7 +1768,7 @@ task.spawn(function()
             atualizarLancamentoPesca()
         end)
         if not ok then
-            if State.AutoFishing then statusPesca="Erro: "..tostring(erro) end
+            if State.AutoFishing then FeatureState.statusPesca="Erro: "..tostring(erro) end
             warn("[GR Hub V7.8 Fishing/Stats]",erro)
         end
         task.wait(0.15)
@@ -1777,30 +1790,30 @@ local function copiarDebug()
         "Quest desejada: "..tostring(wanted and wanted.questName),
         "Campanha: "..tostring(campanha and campanha.questName),
         "Objetivo: "..tostring(objetivo),
-        "Tipo de Tool escolhido: "..tipoToolSelecionado,
+        "Tipo de Tool escolhido: "..FeatureState.tipoToolSelecionado,
         "Auto Stats: "..tostring(State.AutoStats),
-        "Stat escolhida: "..statSelecionado,
-        "Status Stats: "..statusStats,
-        "Última distribuição: "..tostring(ultimaQuantidadeStats),
+        "Stat escolhida: "..FeatureState.statSelecionado,
+        "Status Stats: "..FeatureState.statusStats,
+        "Última distribuição: "..tostring(FeatureState.ultimaQuantidadeStats),
         "Auto Fishing: "..tostring(State.AutoFishing),
         "Auto Lançar Vara: "..tostring(State.AutoCastFishing),
-        "Pescando agora: "..tostring(pescandoAgora),
-        "Status Fishing: "..statusPesca,
-        "Posição da barra de pesca: "..tostring(lastFishY),
+        "Pescando agora: "..tostring(FeatureState.pescandoAgora),
+        "Status Fishing: "..FeatureState.statusPesca,
+        "Posição da barra de pesca: "..tostring(FeatureState.lastFishY),
         "Auto Fruit: "..tostring(State.AutoFarmFruit),
         "Fruit ESP: "..tostring(State.FruitESP),
         "Auto Store Fruit: "..tostring(State.AutoStoreFruit),
         "Frutas selecionadas: "..table.concat((function()
-            local nomes={} for _,n in ipairs(FRUIT_NAMES) do if frutasSelecionadas[n] then table.insert(nomes,n) end end
+            local nomes={} for _,n in ipairs(FRUIT_NAMES) do if FeatureState.frutasSelecionadas[n] then table.insert(nomes,n) end end
             return nomes
         end)(),", "),
-        "Fruta alvo: "..tostring(nomeFrutaAtual),
-        "Coletando fruta agora: "..tostring(frutaOcupada),
-        "Etapa da fruta: "..faseFruta,
-        "Detalhe Auto Fruit: "..statusFruta,
-        "Auto Quest liberado: "..tostring(not frutaOcupada),
-        "Frutas encontradas: "..tostring(#frutasVisiveis),
-        "Frutas recolhidas nesta sessão: "..tostring(contadorFrutas),
+        "Fruta alvo: "..tostring(FeatureState.nomeFrutaAtual),
+        "Coletando fruta agora: "..tostring(FeatureState.frutaOcupada),
+        "Etapa da fruta: "..FeatureState.faseFruta,
+        "Detalhe Auto Fruit: "..FeatureState.statusFruta,
+        "Auto Quest liberado: "..tostring(not FeatureState.frutaOcupada),
+        "Frutas encontradas: "..tostring(#FeatureState.frutasVisiveis),
+        "Frutas recolhidas nesta sessão: "..tostring(FeatureState.contadorFrutas),
         "Tool equipada: "..tostring((player.Character and player.Character:FindFirstChildWhichIsA("Tool")) and player.Character:FindFirstChildWhichIsA("Tool").Name or "Nenhuma"),
         "Alvo: "..tostring(alvo and alvo.Name),
         "NPC: "..tostring(campanha and campanha.giver),
@@ -1874,7 +1887,7 @@ local secPesca=Hub.CreateSection("Fishing","AUTO FISHING")
 Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
 Hub.CreateToggle(secPesca,"Auto Lançar Vara",mudarAutoCastFishing)
 local pl=Hub.CreateSection("Player","AUTO STATS")
-Hub.CreateDropdown(pl,"Selecionar Stat",STATS_NAMES,escolherStat)
+Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
 local reset=Hub.CreateSection("Player","PERSONAGEM")
 Hub.CreateButton(reset,"Resetar Personagem",function()
