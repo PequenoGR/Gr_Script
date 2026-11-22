@@ -56,7 +56,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -754,7 +754,7 @@ end
 local function criarRota(root,destino,chave)
     local origem=root.Position
     local horizontal=Vector3.new(destino.X-origem.X,0,destino.Z-origem.Z).Magnitude
-    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge") and (math.max(origem.Y,destino.Y)+5) or alturaSegura(origem,destino)
+    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge" or chave=="AutoBoss") and (math.max(origem.Y,destino.Y)+5) or alturaSegura(origem,destino)
     rota={root=root,chave=chave,destino=destino,cruzeiro=cruzeiro,fase=horizontal<20 and 3 or 1,concluida=false}
     ultimoInicioRota=os.clock()
 end
@@ -768,8 +768,8 @@ local function definirDestino(destino,chave)
     local diff=(rota.destino-destino).Magnitude
     local tempo=os.clock()-ultimoInicioRota
     if rota.concluida then
-        local margem=chave=="RaidEnemy" and 2 or 6
-        local espera=chave=="RaidEnemy" and 0.18 or 0.35
+        local margem=(chave=="RaidEnemy" or chave=="AutoBoss") and 2 or 6
+        local espera=(chave=="RaidEnemy" or chave=="AutoBoss") and 0.18 or 0.35
         if (root.Position-destino).Magnitude>margem and tempo>espera then criarRota(root,destino,chave)
         else rota.destino=destino end
         return
@@ -784,7 +784,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -793,7 +793,7 @@ local function atualizarVoo(dt)
     prepararVoo(char,root,hum)
     if rota~=r then return end
     if os.clock()-ultimaColisao>0.5 then ultimaColisao=os.clock();atualizarColisao(char) end
-    if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss")) and (root.Position-r.destino).Magnitude<=30 then
+    if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss") or (State.AutoBoss and r.chave=="AutoBoss")) and (root.Position-r.destino).Magnitude<=30 then
         if not FeatureState.raidHover or FeatureState.raidHover.Parent~=root then
             if FeatureState.raidHover then pcall(function() FeatureState.raidHover:Destroy() end) end
             local hold=Instance.new("BodyPosition")
@@ -807,7 +807,7 @@ local function atualizarVoo(dt)
         end
         FeatureState.raidHover.Position=r.destino
         if bodyVelocity then bodyVelocity.MaxForce=Vector3.zero end
-        faseVoo=r.chave=="SeaBoss" and "Sea: colado na cabeça" or "Raid: parado em cima do inimigo"
+        faseVoo=r.chave=="SeaBoss" and "Sea: colado na cabeça" or (r.chave=="AutoBoss" and "Boss: acima do inimigo" or "Raid: parado em cima do inimigo")
         return
     elseif FeatureState.raidHover then
         pcall(function() FeatureState.raidHover:Destroy() end)
@@ -1054,7 +1054,7 @@ local function buscarEAtacar()
     definirDestino(er.Position+Vector3.new(0,alturaInimigo,0),alvo)
 end
 local function atacar()
-    if not State.AutoFarmQuest or State.AutoSeaBeast or State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
+    if not State.AutoFarmQuest or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or os.clock()<(FeatureState.islandUntil or 0) or FeatureState.frutaOcupada or not alvo or not valido(alvo) then return end
     if emTransicao() or (campanha and campanha.ilha=="Volcano Island" and not dentroVulcao()) then return end
     local _,root,hum=character()
     if not root or not hum or hum.Health<=0 then return end
@@ -1084,7 +1084,7 @@ local function definirFarm(v)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
             local ok,err=pcall(function()
-                if os.clock()>=(FeatureState.islandUntil or 0) and not State.AutoSeaBeast and not State.AutoRaid and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
+                if os.clock()>=(FeatureState.islandUntil or 0) and not State.AutoSeaBeast and not State.AutoRaid and not State.AutoBoss and not FeatureState.frutaOcupada and not FeatureState.pescandoAgora then
                     if os.clock()-ultimaQuest>0.3 then ultimaQuest=os.clock();advanceQuest() end
                     buscarEAtacar()
                 end
@@ -1095,7 +1095,7 @@ local function definirFarm(v)
     end)
     task.spawn(function()
         while running() and State.AutoFarmQuest and id==loopId do
-            if not State.AutoSeaBeast and not FeatureState.pescandoAgora then pcall(atacar) end
+            if not State.AutoSeaBeast and not State.AutoBoss and not FeatureState.pescandoAgora then pcall(atacar) end
             task.wait(math.max(modo.Ataque,0.02))
         end
     end)
@@ -1436,7 +1436,7 @@ local function guardarFruta()
 end
 
 local function atualizarFarmFruta()
-    if State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) then FeatureState.frutaOcupada=false;return end
+    if State.AutoRaid or State.AutoBoss or os.clock()<(FeatureState.islandUntil or 0) then FeatureState.frutaOcupada=false;return end
     if State.AutoSeaBeast then
         FeatureState.frutaOcupada=false
         return
@@ -1727,6 +1727,9 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubBossStop)=="function" then pcall(env.GRHubBossStop) end
+    env.GRHubBossStop=nil
+    State.AutoBoss=false
     if type(env.GRHubGachaStop)=="function" then pcall(env.GRHubGachaStop) end
     env.GRHubGachaStop=nil
     if type(env.GRHubFruitShopStop)=="function" then pcall(env.GRHubFruitShopStop) end
@@ -1780,7 +1783,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -2942,7 +2945,7 @@ local FruitShopAuto = (function()
         while running() and not P.stopped do
             local ok,err=pcall(function()
                 if not P.active then return end
-                if emTransicao() or State.AutoRaid or State.AutoSeaBeast
+                if emTransicao() or State.AutoBoss or State.AutoRaid or State.AutoSeaBeast
                     or FeatureState.pescandoAgora or FeatureState.frutaOcupada
                     or FeatureState.islandTraveling then
                     P.status="Aguardando atividade atual terminar"
@@ -3059,7 +3062,7 @@ local FruitGachaAuto = (function()
         while running() and not G.stopped do
             local ok,err=pcall(function()
                 if not G.active or G.waiting then return end
-                if emTransicao() or State.AutoRaid or State.AutoSeaBeast or FeatureState.islandTraveling
+                if emTransicao() or State.AutoBoss or State.AutoRaid or State.AutoSeaBeast or FeatureState.islandTraveling
                     or FeatureState.pescandoAgora or FeatureState.frutaOcupada then
                     G.status="Aguardando outra atividade terminar"
                     return
@@ -3126,13 +3129,295 @@ local FruitGachaAuto = (function()
     return G
 end)()
 
+local BossFarm = (function()
+    local B={
+        active=false,chosen="Mais próximo",list={},choices={"Mais próximo"},
+        target=nil,status="Desligado",found=0,defeated=0,m1=0,skillsUsed=0,
+        lastScan=-10,lastFull=-20,lastAttack=0,lastSkill=0,skillIndex=0,
+        lastHP=nil,lastEnemy=nil,ability=nil,dead=false,lastError=0
+    }
+    local function enemyRoot(model)
+        return rootInimigo(model)
+    end
+    local function bossName(model)
+        local name=model:GetAttribute("BossName")
+        if type(name)=="string" and name~="" then return name end
+        local original=model:GetAttribute("OriginalName") or model:GetAttribute("EnemyName")
+        if type(original)=="string" and original~="" then return original end
+        return model.Name
+    end
+    local function looksLikeBoss(model)
+        if not model or not model:IsA("Model") or not model.Parent then return false end
+        if model==player.Character or (player.Character and model:IsDescendantOf(player.Character)) then return false end
+        local name=tostring(model.Name):lower()
+        if name:find("sea beast",1,true) or name:find("abyssal beast",1,true) then return false end
+        local marked=model:GetAttribute("IsBoss")==true or model:GetAttribute("Boss")==true
+            or model:GetAttribute("BossNPC")==true
+        if not marked then
+            local v=model:GetAttribute("BossName") or model:GetAttribute("Boss")
+            marked=type(v)=="string" and v~="" and v~="false"
+        end
+        if not marked then
+            for _,key in ipairs({"Type","EnemyType","Rank","Title","Category"}) do
+                local val=model:GetAttribute(key)
+                if type(val)=="string" and val:lower():find("boss",1,true) then marked=true;break end
+            end
+        end
+        if not marked then
+            marked=name:find("boss",1,true)~=nil or name:find("commander",1,true)~=nil
+                or name:find("warlord",1,true)~=nil
+        end
+        if not marked then
+            local parent=model.Parent
+            while parent and parent~=workspace do
+                local pn=parent.Name:lower()
+                if pn=="bosses" or pn=="bossmobs" or pn=="bossnpcs" or pn=="bossenemies" then
+                    marked=true
+                    break
+                end
+                parent=parent.Parent
+            end
+        end
+        return marked
+    end
+    local function valid(model)
+        if not looksLikeBoss(model) then return nil end
+        if model:GetAttribute("Dead")==true or model:GetAttribute("IsDead")==true then return nil end
+        local hp=vidaInimigo(model)
+        if type(hp)=="number" and hp<=0 then return nil end
+        local hum=model:FindFirstChildWhichIsA("Humanoid",true)
+        if hum and hum.Health<=0 then return nil end
+        local root=enemyRoot(model)
+        return root and root:IsA("BasePart") and root or nil
+    end
+    local function scan(force)
+        if not force and os.clock()-B.lastScan<1.75 then return end
+        B.lastScan=os.clock()
+        local scopes,seen,found={},{},{}
+        local play=workspace:FindFirstChild("Playability")
+        local ignored=workspace:FindFirstChild("IgnoreList")
+        local inner=ignored and ignored:FindFirstChild("Int")
+        for _,base in ipairs({play or false,inner or false,ignored or false}) do
+            if base then
+                for _,key in ipairs({"Enemys","Enemies","Bosses","BossMobs","BossNPCs"}) do
+                    local folder=base:FindFirstChild(key)
+                    if folder then table.insert(scopes,folder) end
+                end
+            end
+        end
+        local function consider(model)
+            if not seen[model] then
+                seen[model]=true
+                if valid(model) then table.insert(found,model) end
+            end
+        end
+        for _,folder in ipairs(scopes) do
+            if folder:IsA("Model") then consider(folder) end
+            for _,candidate in ipairs(folder:GetDescendants()) do
+                if candidate:IsA("Model") then consider(candidate) end
+            end
+        end
+        if #found==0 and os.clock()-B.lastFull>9 then
+            B.lastFull=os.clock()
+            for _,candidate in ipairs(workspace:GetDescendants()) do
+                if candidate:IsA("Model") then consider(candidate) end
+            end
+        end
+        B.list=found
+        B.found=#found
+    end
+    function B.options()
+        scan(true)
+        local names,seen={"Mais próximo"},{["Mais próximo"]=true}
+        for _,boss in ipairs(B.list) do
+            local name=bossName(boss)
+            if not seen[name] then table.insert(names,name);seen[name]=true end
+        end
+        table.sort(names,function(a,b)
+            if a=="Mais próximo" then return true end
+            if b=="Mais próximo" then return false end
+            return a:lower()<b:lower()
+        end)
+        B.choices=names
+        return names
+    end
+    function B.choose(value)
+        if type(value)=="table" then value=value.Name or value.Value or value.Valor end
+        if type(value)=="string" and value~="" then
+            B.chosen=value
+            B.target=nil
+            B.lastScan=-10
+            if rota and rota.chave=="AutoBoss" then liberarVoo() end
+        end
+    end
+    function B.setAuto(v)
+        State.AutoBoss=(v==true)
+        B.active=State.AutoBoss
+        B.status=B.active and "Buscando bosses no mapa" or "Desligado"
+        B.target=nil
+        B.lastScan=-10
+        B.lastHP=nil
+        if B.active then
+            FeatureState.frutaOcupada=false
+            if rota then liberarVoo() end
+        elseif rota and rota.chave=="AutoBoss" then
+            liberarVoo()
+        end
+    end
+    local function selectBoss(root)
+        scan(false)
+        local best,dist=nil,math.huge
+        if B.target and valid(B.target)
+            and (B.chosen=="Mais próximo" or bossName(B.target)==B.chosen) then
+            local oldRoot=enemyRoot(B.target)
+            if oldRoot then best=B.target;dist=(root.Position-oldRoot.Position).Magnitude end
+        end
+        for _,candidate in ipairs(B.list) do
+            local targetRoot=valid(candidate)
+            if targetRoot and (B.chosen=="Mais próximo" or bossName(candidate)==B.chosen) then
+                local d=(root.Position-targetRoot.Position).Magnitude
+                if d<dist-15 or not best then best=candidate;dist=d end
+            end
+        end
+        return best
+    end
+    local function useSkill(tool)
+        if os.clock()-B.lastSkill<1.7 then return end
+        if not B.ability then
+            local mods=RS:FindFirstChild("Modules")
+            local combat=mods and mods:FindFirstChild("Combat")
+            local system=combat and combat:FindFirstChild("AbilitySystem")
+            local client=system and system:FindFirstChild("AbilitySystem Client")
+            local module=client and client:FindFirstChild("SkillsSystem Client")
+            if module then
+                local ok,result=pcall(require,module)
+                if ok and type(result)=="table" then B.ability=result end
+            end
+        end
+        local skill=B.ability
+        if not skill then return end
+        local keys={"Z","X","C","V","F"}
+        for _=1,#keys do
+            B.skillIndex=B.skillIndex%#keys+1
+            local key=keys[B.skillIndex]
+            local usable=true
+            if skill.Skills and type(skill.Skills.GetByKey)=="function" then
+                local ok,exists=pcall(function() return skill.Skills:GetByKey(tool.Name,key) end)
+                usable=ok and exists~=nil
+            end
+            if usable then
+                B.lastSkill=os.clock()
+                local ok=false
+                if skill.SkillUI and type(skill.SkillUI.RequestMobile)=="function" then
+                    ok=pcall(skill.SkillUI.RequestMobile,key)
+                end
+                if not ok then
+                    local input
+                    pcall(function() input=game:GetService("VirtualInputManager") end)
+                    if input then
+                        ok=pcall(function()
+                            input:SendKeyEvent(true,Enum.KeyCode[key],false,game)
+                            task.delay(.11,function()
+                                pcall(function() input:SendKeyEvent(false,Enum.KeyCode[key],false,game) end)
+                            end)
+                        end)
+                    end
+                end
+                if ok then B.skillsUsed+=1 end
+                return
+            end
+        end
+    end
+    local function tick()
+        if not State.AutoBoss or not running() then return end
+        if State.AutoRaid or State.AutoSeaBeast or FeatureState.islandTraveling
+            or FeatureState.pescandoAgora or emTransicao()
+            or os.clock()<(FeatureState.islandUntil or 0) then
+            B.status="Pausado por outro sistema"
+            if rota and rota.chave=="AutoBoss" then liberarVoo() end
+            return
+        end
+        local _,root,hum=character()
+        if not root or not hum or hum.Health<=0 then
+            B.target=nil
+            B.status="Aguardando personagem"
+            return
+        end
+        local boss=selectBoss(root)
+        if not boss then
+            B.target=nil
+            B.status=(B.chosen=="Mais próximo" and "Aguardando boss aparecer" or ("Aguardando: "..B.chosen))
+            if rota and rota.chave=="AutoBoss" then liberarVoo() end
+            return
+        end
+        if B.target~=boss then
+            B.target=boss
+            B.lastHP=nil
+        end
+        local enemy=enemyRoot(boss)
+        if not enemy then return end
+        local hp=vidaInimigo(boss)
+        if hp and B.lastHP and hp<=0 and B.lastHP>0 then B.defeated+=1 end
+        B.lastHP=hp
+        local target=enemy.Position+Vector3.new(0,5,0)
+        local distance=(root.Position-enemy.Position).Magnitude
+        B.status=(distance>12 and "Indo ao boss: " or "Atacando boss: ")..bossName(boss)
+        definirDestino(target,"AutoBoss")
+        if distance>13 then return end
+        local tool=equiparArma()
+        if not tool then
+            B.status="Escolha uma Tool válida para atacar o boss"
+            return
+        end
+        local direction=Vector3.new(enemy.Position.X-root.Position.X,0,enemy.Position.Z-root.Position.Z)
+        if direction.Magnitude>.1 then
+            pcall(function() root.CFrame=CFrame.lookAt(root.Position,root.Position+direction) end)
+        end
+        if os.clock()-B.lastAttack>.2 then
+            B.lastAttack=os.clock()
+            local ok=pcall(function() tool:Activate() end)
+            if ok then B.m1+=1 end
+        end
+        useSkill(tool)
+    end
+    function B.cleanup()
+        B.dead=true
+        B.active=false
+        State.AutoBoss=false
+        if rota and rota.chave=="AutoBoss" then liberarVoo() end
+    end
+    env.GRHubBossStop=B.cleanup
+    task.spawn(function()
+        while running() and not B.dead do
+            local ok,err=pcall(tick)
+            if not ok then
+                B.status="Erro: "..tostring(err)
+                if os.clock()-B.lastError>3 then
+                    B.lastError=os.clock()
+                    warn("[GR Hub Auto Boss]",err)
+                end
+            end
+            task.wait(State.AutoBoss and .11 or 1.5)
+        end
+        B.cleanup()
+    end)
+    return B
+end)()
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V9.2 - AUTO GACHA E BUY FRUIT",
+        "GR HUB V9.3 - AUTO BOSS",
+        "Auto Boss: "..tostring(State.AutoBoss),
+        "Boss selecionado: "..tostring(BossFarm.chosen),
+        "Boss encontrados: "..tostring(BossFarm.found),
+        "Boss alvo: "..tostring(BossFarm.target and BossFarm.target.Name),
+        "Boss status: "..tostring(BossFarm.status),
+        "Boss M1: "..tostring(BossFarm.m1),
+        "Boss Skills: "..tostring(BossFarm.skillsUsed),
         "Auto Gacha: "..tostring(FruitGachaAuto.active),
         "Auto Gacha status: "..tostring(FruitGachaAuto.status),
         "Auto Gacha giros: "..tostring(FruitGachaAuto.spins),
@@ -3253,6 +3538,17 @@ Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
 Hub.CreateToggle(farm,"Auto Farm Quest",definirFarm)
+local secBoss=Hub.CreateSection("Main","AUTO BOSS")
+local bossSelector
+local function refreshBossList()
+    local names=BossFarm.options()
+    if bossSelector and bossSelector.Parent then bossSelector.Parent:Destroy() end
+    bossSelector=Hub.CreateDropdown(secBoss,"Selecionar Boss",names,BossFarm.choose,false)
+    print("[GR Hub Auto Boss] "..tostring(#names-1).." bosses encontrados.")
+end
+refreshBossList()
+Hub.CreateToggle(secBoss,"Auto Boss",BossFarm.setAuto,"crown",false)
+Hub.CreateButton(secBoss,"Atualizar lista de bosses",refreshBossList,"refresh-cw")
 local secFrutas=Hub.CreateSection("Fruits","AUTO FRUIT")
 if type(Hub.CreateMultiDropdown)=="function" then
     Hub.CreateMultiDropdown(secFrutas,"Frutas para pegar",FRUIT_NAMES,setFrutasEscolhidas,FRUIT_NAMES)
@@ -3316,6 +3612,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V9.2] Auto Gacha = girar frutas; Buy Fruit = comprar frutas da loja")
+print("[GR Hub V9.3] Auto Boss na Main: busca, acompanha e ataca bosses automaticamente")
 
 end)()
