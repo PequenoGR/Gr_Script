@@ -754,7 +754,7 @@ end
 local function criarRota(root,destino,chave)
     local origem=root.Position
     local horizontal=Vector3.new(destino.X-origem.X,0,destino.Z-origem.Z).Magnitude
-    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge" or chave=="AutoBoss" or chave=="SeaBoss") and (math.max(origem.Y,destino.Y)+4) or alturaSegura(origem,destino)
+    local cruzeiro=(chave=="RaidEnemy" or chave=="RaidDodge" or chave=="AutoBoss" or chave=="SeaBoss" or chave=="SeaDodge") and (math.max(origem.Y,destino.Y)+4) or alturaSegura(origem,destino)
     rota={root=root,chave=chave,destino=destino,cruzeiro=cruzeiro,fase=horizontal<20 and 3 or 1,concluida=false}
     ultimoInicioRota=os.clock()
 end
@@ -819,7 +819,7 @@ local function atualizarVoo(dt)
     local flat=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
     if flat.Magnitude>0.1 and bodyGyro then bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+flat) end
     if r.concluida then faseVoo="No destino";return end
-    local velocidade=r.chave=="IslandTP" and (FeatureState.islandSpeed or 45) or modo.Velocidade
+    local velocidade=r.chave=="IslandTP" and (FeatureState.islandSpeed or 45) or ((r.chave=="SeaBoss" or r.chave=="SeaDodge") and math.max(modo.Velocidade,r.chave=="SeaDodge" and 520 or 420) or modo.Velocidade)
     local restante=velocidade*math.min(dt,0.1)
     for _=1,12 do
         if restante<=0 or rota~=r then break end
@@ -1838,6 +1838,7 @@ local Sea = (function()
         scanned = 0, lastGlobal = 0, m1 = 0, skill = 0,
         skillIndex = 0, lastDodge = 0, dodgeUntil = 0,
         dodgePoint = nil, dodgeSide = 1, lastHealth = nil,
+        dodges = 0, nextThreatScan = 0, cachedThreat = nil, lastThreatToken = nil,
         eventPart = nil, dead = false, skills = nil
     }
     local function kind(m)
@@ -2030,44 +2031,114 @@ local Sea = (function()
         end
         return closest
     end
-    local function hazard(m,root,hum)
-        local last=S.lastHealth
-        S.lastHealth=hum.Health
-        if last and hum.Health<last-math.max(12,hum.MaxHealth*.045) then
-            return "Dano recebido"
-        end
-        local dist=(root.Position-m:GetPivot().Position).Magnitude
-        if dist>450 then return nil end
-        local a=m:GetAttribute("CurrentSkill") or m:GetAttribute("Skill") or m:GetAttribute("Action")
-        if type(a)=="string" then
-            local lower=a:lower()
-            for _,word in ipairs({"waterbomb","tornado","roar","bite","tailwhip","leapgrab","dive"}) do
-                if lower:find(word,1,true) then return a end
-            end
-        end
-        local animator=m:FindFirstChildWhichIsA("Animator",true)
-        if animator then
-            for _,track in ipairs(animator:GetPlayingAnimationTracks()) do
-                local name=(track.Name.." "..(track.Animation and track.Animation.Name or "")):lower()
-                for _,word in ipairs({"waterbomb","tornado","roar","bite","tailwhip","leapgrab","dive"}) do
-                    if name:find(word,1,true) then return word end
-                end
-            end
-        end
-        local il=workspace:FindFirstChild("IgnoreList")
-        local tmp=il and il:FindFirstChild("Temp")
-        if tmp then
-            for _,o in ipairs(tmp:GetChildren()) do
-                local n=o.Name:lower()
-                if n:find("waterprojectile",1,true) or n:find("waterbomb",1,true) or n:find("hurricane",1,true) or n:find("tornado",1,true) then
-                    local pos
-                    if o:IsA("BasePart") then pos=o.Position
-                    elseif o:IsA("Model") then pos=o:GetPivot().Position end
-                    if pos and (root.Position-pos).Magnitude<140 then return "Projétil próximo" end
-                end
-            end
-        end
+    local function hazardClass(label)
+        local text=tostring(label or ""):lower()
+        if text:find("waterprojectile",1,true) or text:find("waterbomb",1,true)
+            or text:find("bubbleprojectile",1,true) then return "Projétil de água","projectile",15 end
+        if text:find("hurricane",1,true) or text:find("tornado",1,true)
+            or text:find("whirlpool",1,true) then return "Redemoinho","area",31 end
+        if text:find("tidalwave",1,true) or text:find("shockwave",1,true)
+            or text:find("airwave",1,true) then return "Onda de choque","area",33 end
+        if text:find("tailwhip",1,true) or text:find("tailattack",1,true) then return "Golpe de cauda","attack",29 end
+        if text:find("leapgrab",1,true) or text:find("bite",1,true)
+            or text:find("grab",1,true) then return "Mordida / agarrão","attack",24 end
+        if text:find("roar",1,true) or text:find("dive",1,true)
+            or text:find("slam",1,true) then return "Ataque em área","attack",33 end
+        if text:find("dangerzone",1,true) or text:find("telegraph",1,true)
+            or text:find("warning",1,true) then return "Área de perigo","area",33 end
         return nil
+    end
+    local function planar(a,b)
+        return (Vector2.new(a.X,a.Z)-Vector2.new(b.X,b.Z)).Magnitude
+    end
+    local function hazard(m,root,hum,head)
+        local previous=S.lastHealth
+        S.lastHealth=hum.Health
+        if previous and hum.Health<previous-math.max(6,hum.MaxHealth*.025) then
+            return {reason="Dano recebido",center=head,radius=31,kind="hit",token="hit:"..tostring(math.floor(os.clock()*2))}
+        end
+        if (root.Position-head).Magnitude>265 then S.cachedThreat=nil;return nil end
+        local now=os.clock()
+        if now<S.nextThreatScan then return S.cachedThreat end
+        S.nextThreatScan=now+.12
+        local danger,score=nil,math.huge
+        local ignored=workspace:FindFirstChild("IgnoreList")
+        local temp=ignored and ignored:FindFirstChild("Temp")
+        if temp then
+            for _,obj in ipairs(temp:GetChildren()) do
+                local name,kind,radius=hazardClass(obj.Name)
+                if name and (kind=="projectile" or kind=="area") then
+                    local pos,part
+                    if obj:IsA("BasePart") then pos=obj.Position;part=obj
+                    elseif obj:IsA("Model") then
+                        pos=obj:GetPivot().Position
+                        part=obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart",true)
+                    end
+                    if pos and (pos-head).Magnitude<235 then
+                        if part then radius=math.max(radius,math.min(58,math.max(part.Size.X,part.Size.Z)*.5)) end
+                        local predicted=pos
+                        local velocity=part and part.AssemblyLinearVelocity or Vector3.zero
+                        if kind=="projectile" and velocity.Magnitude>8 then
+                            local approach=(root.Position-pos):Dot(velocity)/velocity:Dot(velocity)
+                            predicted=pos+velocity*math.clamp(approach,0,.75)
+                        end
+                        local h=planar(predicted,root.Position)
+                        if h<radius+13 and math.abs(predicted.Y-root.Position.Y)<math.max(radius+16,33) then
+                            local urgency=h/math.max(radius,1)
+                            if urgency<score then
+                                score=urgency
+                                danger={reason=name,center=predicted,radius=radius,kind=kind,token=obj}
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if not danger then
+            local signal=m:GetAttribute("CurrentSkill") or m:GetAttribute("Skill") or m:GetAttribute("Action")
+            local reason,kind,radius=hazardClass(signal)
+            if reason and planar(head,root.Position)<radius+26 then
+                danger={reason=reason,center=head,radius=radius,kind=kind,token="skill:"..tostring(signal)}
+            end
+        end
+        if not danger then
+            local animator=m:FindFirstChildWhichIsA("Animator",true)
+            if animator and planar(head,root.Position)<78 then
+                for _,track in ipairs(animator:GetPlayingAnimationTracks()) do
+                    local descriptor=tostring(track.Name).." "..tostring(track.Animation and track.Animation.Name or "")
+                    local reason,kind,radius=hazardClass(descriptor)
+                    if reason then
+                        danger={reason=reason,center=head,radius=radius,kind=kind,token=track}
+                        break
+                    end
+                end
+            end
+        end
+        S.cachedThreat=danger
+        return danger
+    end
+    local function chooseDodge(root,head,threat)
+        local danger=threat.center
+        local away=Vector3.new(root.Position.X-danger.X,0,root.Position.Z-danger.Z)
+        if away.Magnitude<.75 then
+            away=Vector3.new(root.Position.X-head.X,0,root.Position.Z-head.Z)
+        end
+        if away.Magnitude<.75 then away=Vector3.new(1,0,0) end
+        away=away.Unit
+        local side=Vector3.new(-away.Z,0,away.X)
+        local currentDist=planar(root.Position,danger)
+        local step=math.clamp(threat.radius+17-currentDist,20,53)
+        local vectors={away,side,-side,(away+side).Unit,(away-side).Unit}
+        local best,bestScore=nil,-math.huge
+        for _,dir in ipairs(vectors) do
+            local pt=root.Position+dir*step+Vector3.new(0,threat.kind=="area" and 9 or 4,0)
+            local safety=planar(pt,danger)
+            local headDistance=planar(pt,head)
+            local score=safety-headDistance*.32
+            if safety<threat.radius+7 then score-=120 end
+            if score>bestScore then best,bestScore=pt,score end
+        end
+        return best
     end
     local function skillUse(tool)
         if not S.skills then
@@ -2126,6 +2197,12 @@ local Sea = (function()
             end
             return
         end
+        if S.target~=boss then
+            S.lastHealth=nil
+            S.cachedThreat=nil
+            S.nextThreatScan=0
+            S.lastThreatToken=nil
+        end
         S.target=boss
         local bp=alive(boss)
         if not bp then return end
@@ -2133,32 +2210,46 @@ local Sea = (function()
         local flat=Vector3.new(delta.X,0,delta.Z)
         if flat.Magnitude<.1 then flat=Vector3.new(1,0,0) end
         local dist=delta.Magnitude
-        local threat=hazard(boss,root,hum)
-        if threat and os.clock()-S.lastDodge>3.5 then
-            S.lastDodge=os.clock()
-            S.dodgeUntil=os.clock()+0.8
-            S.dodgeSide=-S.dodgeSide
-            S.threat=threat
-            local side=Vector3.new(-flat.Z,0,flat.X).Unit*S.dodgeSide
-            S.dodgePoint=root.Position+side*45+Vector3.new(0,15,0)
+        local head=headPosition(boss,bp)
+        local now=os.clock()
+        local threat=hazard(boss,root,hum,head)
+        if threat and now-S.lastDodge>0.68
+            and (S.lastThreatToken~=threat.token or now-S.lastDodge>2.4) then
+            S.lastDodge=now
+            S.lastThreatToken=threat.token
+            S.dodgeUntil=now+(threat.kind=="projectile" and .55 or .75)
+            S.threat=threat.reason
+            S.dodgePoint=chooseDodge(root,head,threat)
+            S.dodges+=1
+            if rota and rota.chave=="SeaBoss" then liberarVoo() end
         end
-        if os.clock()<S.dodgeUntil and S.dodgePoint then
+        if now<S.dodgeUntil and S.dodgePoint then
             S.status="Desviando: "..S.threat
             definirDestino(S.dodgePoint,"SeaDodge")
-            if rota and rota.chave=="SeaDodge" then rota.cruzeiro=math.max(root.Position.Y,S.dodgePoint.Y)+8 end
+            if (root.Position-S.dodgePoint).Magnitude<5 then
+                S.dodgeUntil=math.min(S.dodgeUntil,now+.12)
+            end
             return
         end
-        local head=headPosition(boss,bp)
-        local goal=head+Vector3.new(0,0.15,0)
+        local outward=head-bp.Position
+        local towardFront=Vector3.new(outward.X,0,outward.Z)
+        if towardFront.Magnitude<.5 then
+            local forward=bp.CFrame.LookVector
+            towardFront=Vector3.new(forward.X,0,forward.Z)
+        end
+        if towardFront.Magnitude<.1 then towardFront=Vector3.new(1,0,0) end
+        local advance=bp.AssemblyLinearVelocity*0.1
+        if advance.Magnitude>7 then advance=advance.Unit*7 end
+        local goal=head+towardFront.Unit*7+Vector3.new(0,2.5,0)+advance
         local headDistance=(root.Position-head).Magnitude
-        S.status=(headDistance>3 and "Colando na cabeça: " or "Atacando cabeça: ")..tostring(kind(boss)).." Sea Beast"
+        S.status=(root.Position-goal).Magnitude>6 and ("Aproximando da cabeça: "..tostring(kind(boss))) or ("Atacando perto da cabeça: "..tostring(kind(boss)))
         definirDestino(goal,"SeaBoss")
         if rota and rota.chave=="SeaBoss" and headDistance>30 and dist<380 then
             rota.cruzeiro=math.max(root.Position.Y,goal.Y)+4
         end
         local tool=equiparArma()
         if not tool then S.attack="Tool não encontrada";return end
-        if headDistance<7 and os.clock()-S.m1>.08 then
+        if headDistance<13 and os.clock()-S.m1>.08 then
             S.m1=os.clock()
             local face=Vector3.new(head.X-root.Position.X,0,head.Z-root.Position.Z)
             if face.Magnitude>0.15 then
@@ -2166,10 +2257,10 @@ local Sea = (function()
             end
             pcall(function() tool:Activate() end)
             S.attack="M1 na cabeça "..tool.Name
-        elseif headDistance>=7 then
-            S.attack="Indo à cabeça para M1 ("..math.floor(headDistance).." studs)"
+        elseif headDistance>=13 then
+            S.attack="Aproximando para M1 ("..math.floor(headDistance).." studs)"
         end
-        if headDistance<80 and os.clock()-S.skill>1.1 then
+        if headDistance<80 and os.clock()-S.skill>.95 then
             S.skill=os.clock()
             pcall(skillUse,tool)
         end
@@ -2183,11 +2274,19 @@ local Sea = (function()
         if State.AutoSeaBeast then
             finalizarTentativaFruta(false,0)
             S.lastHealth=nil
+            S.lastThreatToken=nil
+            S.cachedThreat=nil
+            S.nextThreatScan=0
+            S.dodgeUntil=0
+            S.dodgePoint=nil
             S.status="Procurando Sea Beast"
             liberarVoo()
         else
             S.status="Desligado"
             S.target=nil
+            S.dodgeUntil=0
+            S.dodgePoint=nil
+            S.cachedThreat=nil
             if rota and type(rota.chave)=="string" and rota.chave:sub(1,3)=="Sea" then liberarVoo() end
         end
     end
@@ -3449,6 +3548,8 @@ local function copiarDebug()
         "Sea status: "..tostring(Sea.status),
         "Sea ataque: "..tostring(Sea.attack),
         "Sea ameaça: "..tostring(Sea.threat),
+        "Sea esquivas: "..tostring(Sea.dodges),
+        "Sea perigo detectado: "..tostring(Sea.cachedThreat and Sea.cachedThreat.reason),
         "Status: "..status,
         "Nivel: "..tostring(lerNivel(d)),
         "Quests: "..#CAMPANHAS,
@@ -3612,6 +3713,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V9.4] Auto Boss e Sea Beast com aproximação colada, M1 rápido e skills")
+print("[GR Hub V9.5] Sea Beast: distância segura da cabeça, aproximação rápida e esquivas inteligentes")
 
 end)()
