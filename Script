@@ -819,7 +819,7 @@ local function atualizarVoo(dt)
     local flat=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
     if flat.Magnitude>0.1 and bodyGyro then bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+flat) end
     if r.concluida then faseVoo="No destino";return end
-    local velocidade=r.chave=="IslandTP" and (FeatureState.islandSpeed or 100) or modo.Velocidade
+    local velocidade=r.chave=="IslandTP" and (FeatureState.islandSpeed or 45) or modo.Velocidade
     local restante=velocidade*math.min(dt,0.1)
     for _=1,12 do
         if restante<=0 or rota~=r then break end
@@ -2597,11 +2597,11 @@ end)()
 local IslandTeleport = (function()
     local T = {
         chosen=nil,options={},status="Pronto",
-        speed=100,token=0,traveling=false,
+        speed=45,token=0,traveling=false,
         speedChoices={
-            {Name="Lento (100)",Valor=100},
-            {Name="Normal (175)",Valor=175},
-            {Name="Rápido (300)",Valor=300}
+            {Name="Lento (45)",Valor=45},
+            {Name="Normal (90)",Valor=90},
+            {Name="Rápido (160)",Valor=160}
         }
     }
     local function areas()
@@ -2643,7 +2643,7 @@ local IslandTeleport = (function()
     end
     function T.setSpeed(v)
         if type(v)=="table" then v=v.Valor or v.Value end
-        if type(v)=="number" then T.speed=math.clamp(v,35,400) end
+        if type(v)=="number" then T.speed=math.clamp(v,20,220) end
         FeatureState.islandSpeed=T.speed
     end
     function T.stop()
