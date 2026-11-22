@@ -1727,6 +1727,8 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubFruitShopStop)=="function" then pcall(env.GRHubFruitShopStop) end
+    env.GRHubFruitShopStop=nil
     FeatureState.islandTraveling=false
     FeatureState.islandUntil=0
     if type(env.GRHubIslandStop)=="function" then pcall(env.GRHubIslandStop) end
@@ -2787,13 +2789,266 @@ local IslandTeleport = (function()
     return T
 end)()
 
+
+local FruitShopAuto = (function()
+    local P={
+        active=false,names={},chosen={},maxPrice=math.huge,keepGold=0,
+        allowReplace=false,stock={},status="Desligado",lastFetch=0,
+        attempts=0,purchases=0,requesting=false,stopped=false,
+        lastAttempt=0,lastCycle=nil,lastFruit="-",lastPrice=0
+    }
+    for _,name in ipairs(FRUIT_NAMES) do table.insert(P.names,name) end
+    for _,name in ipairs({"Forest","Operator"}) do
+        if not table.find(P.names,name) then table.insert(P.names,name) end
+    end
+    table.sort(P.names)
+    P.priceOptions={
+        {Name="Sem limite",Valor=math.huge},
+        {Name="Até 100.000 Gold",Valor=100000},
+        {Name="Até 500.000 Gold",Valor=500000},
+        {Name="Até 1.000.000 Gold",Valor=1000000},
+        {Name="Até 5.000.000 Gold",Valor=5000000},
+        {Name="Até 10.000.000 Gold",Valor=10000000},
+        {Name="Até 50.000.000 Gold",Valor=50000000}
+    }
+    P.reserveOptions={
+        {Name="Sem reserva",Valor=0},
+        {Name="Guardar 100.000 Gold",Valor=100000},
+        {Name="Guardar 500.000 Gold",Valor=500000},
+        {Name="Guardar 1.000.000 Gold",Valor=1000000},
+        {Name="Guardar 5.000.000 Gold",Valor=5000000}
+    }
+    local function notify(text)
+        print("[GR Hub Fruit Shop] "..tostring(text))
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification",{
+                Title="GR Hub - Loja de frutas",Text=tostring(text),Duration=6
+            })
+        end)
+    end
+    local function cycleId()
+        return tostring(game.PlaceId)..":"..tostring(player.UserId)..":"..tostring(math.floor(workspace:GetServerTimeNow()/14400))
+    end
+    local function wallet()
+        local d=lerDados()
+        local m=d and d.Monetization
+        if not m then return nil end
+        return tonumber(m.Gold)
+    end
+    local function oldFruit()
+        if not mainModulo or not mainModulo.ToolsUtils then return nil end
+        local ok,item=pcall(function()
+            return mainModulo.ToolsUtils.GetCurrentCategoryTool(nil,"Fruit")
+        end)
+        if ok and item then return item.Name end
+        return nil
+    end
+    local function permanent(name)
+        if not mainModulo or not mainModulo.TransactionData then return false end
+        local ok,owned=pcall(function()
+            return mainModulo.TransactionData.IsProductOwned(nil,name)
+        end)
+        return ok and owned==true
+    end
+    local function loadStock(force)
+        if P.requesting then return false end
+        if not force and os.clock()-P.lastFetch<55 then return #P.stock>0 end
+        if not dadosModulo or not dadosModulo.Network then
+            P.status="Rede da loja indisponível"
+            return false
+        end
+        P.requesting=true
+        P.lastFetch=os.clock()
+        local ok,result=pcall(function()
+            return dadosModulo.Network:SafeInvokeServer(5,"RotativeShop","GetBanner")
+        end)
+        P.requesting=false
+        if not ok or type(result)~="table" then
+            P.status="Não consegui consultar o estoque"
+            return false
+        end
+        P.stock={}
+        for _,entry in ipairs(result) do
+            if type(entry)=="table" and type(entry.FruitName)=="string" then
+                local price=tonumber(entry.Price)
+                if entry.InStock==true and price and price>0 then
+                    table.insert(P.stock,{name=entry.FruitName,price=price})
+                end
+            end
+        end
+        P.status="Estoque atualizado: "..tostring(#P.stock).." frutas"
+        return true
+    end
+    local function nextFruit()
+        local gold=wallet()
+        if not gold then return nil,"Saldo Gold não carregado" end
+        local holding=oldFruit()
+        if holding and not P.allowReplace then
+            return nil,"Você já equipa "..holding.." (ative 'Permitir substituir')"
+        end
+        local selected=0
+        local offers={}
+        local skipped={}
+        for _,offer in ipairs(P.stock) do
+            local base=offer.name:match("^(.-) Fruit$")
+            if base and P.chosen[base] then
+                selected+=1
+                if holding==base then
+                    table.insert(skipped,"Fruta já equipada")
+                elseif permanent(offer.name) then
+                    table.insert(skipped,"Fruta permanente já possuída")
+                elseif offer.price>P.maxPrice then
+                    table.insert(skipped,"Acima do preço máximo")
+                elseif gold-offer.price<P.keepGold then
+                    table.insert(skipped,"Gold insuficiente/reserva")
+                else
+                    table.insert(offers,offer)
+                end
+            end
+        end
+        if #offers>0 then
+            table.sort(offers,function(a,b)
+                local x=(FRUIT_RARITY[a.name:match("^(.-) Fruit$")] or "Common")
+                local y=(FRUIT_RARITY[b.name:match("^(.-) Fruit$")] or "Common")
+                local ranks={Common=1,Rare=2,Epic=3,Legendary=4,Mythical=5}
+                if x~=y then return (ranks[x] or 0)>(ranks[y] or 0) end
+                return a.price<b.price
+            end)
+            return offers[1]
+        end
+        if selected==0 then return nil,"Nenhuma fruta selecionada em estoque" end
+        return nil,skipped[1] or "Fruta escolhida indisponível"
+    end
+    function P.setSelected(values)
+        table.clear(P.chosen)
+        for _,v in ipairs(type(values)=="table" and values or {}) do
+            local name=type(v)=="table" and (v.Name or v.Value or v.Valor) or v
+            if type(name)=="string" and table.find(P.names,name) then P.chosen[name]=true end
+        end
+        local count=0
+        for _ in pairs(P.chosen) do count+=1 end
+        P.status=tostring(count).." frutas selecionadas"
+    end
+    function P.setPrice(v)
+        local value=type(v)=="table" and v.Valor or v
+        if type(value)=="number" and value>0 then P.maxPrice=value end
+    end
+    function P.setReserve(v)
+        local value=type(v)=="table" and v.Valor or v
+        if type(value)=="number" and value>=0 then P.keepGold=value end
+    end
+    function P.setReplace(v)
+        P.allowReplace=(v==true)
+    end
+    function P.setAuto(v)
+        P.active=(v==true)
+        P.status=P.active and "Procurando frutas selecionadas em estoque" or "Desligado"
+        if P.active then P.lastFetch=0 end
+    end
+    function P.showStock()
+        task.spawn(function()
+            loadStock(true)
+            local pieces={}
+            for _,entry in ipairs(P.stock) do
+                local base=entry.name:match("^(.-) Fruit$") or entry.name
+                table.insert(pieces,(P.chosen[base] and "✓ " or "")..base.." = "..tostring(entry.price).." Gold")
+            end
+            local message="Estoque atual:\n"..(#pieces>0 and table.concat(pieces,"\n") or "Sem ofertas disponíveis")
+            print("[GR Hub Fruit Shop]\n"..message)
+            local selected=0
+            for _,entry in ipairs(P.stock) do
+                if P.chosen[entry.name:match("^(.-) Fruit$") or ""] then selected+=1 end
+            end
+            notify(tostring(selected).." frutas escolhidas no estoque. Veja o console para preços.")
+        end)
+    end
+    function P.cleanup()
+        P.stopped=true
+        P.active=false
+    end
+    env.GRHubFruitShopStop=P.cleanup
+    task.spawn(function()
+        while running() and not P.stopped do
+            local ok,err=pcall(function()
+                if not P.active then return end
+                if emTransicao() or State.AutoRaid or State.AutoSeaBeast
+                    or FeatureState.pescandoAgora or FeatureState.frutaOcupada
+                    or FeatureState.islandTraveling then
+                    P.status="Aguardando atividade atual terminar"
+                    return
+                end
+                if not next(P.chosen) then
+                    P.status="Escolha uma ou mais frutas para comprar"
+                    return
+                end
+                local cycle=cycleId()
+                local history=env.GRHubFruitShopAttempts
+                if type(history)~="table" then
+                    history={}
+                    env.GRHubFruitShopAttempts=history
+                end
+                if history[cycle] then
+                    P.status="Compra já tentada neste estoque (aguardando rotação)"
+                    return
+                end
+                if not loadStock(false) then return end
+                local offer,reason=nextFruit()
+                if not offer then
+                    P.status=reason
+                    return
+                end
+                if os.clock()-P.lastAttempt<5 then return end
+                P.lastAttempt=os.clock()
+                local gold=wallet()
+                if not gold or gold-offer.price<P.keepGold or offer.price>P.maxPrice then return end
+                history[cycle]=true
+                P.attempts+=1
+                P.lastCycle=cycle
+                P.lastFruit=offer.name
+                P.lastPrice=offer.price
+                local success,err=pcall(function()
+                    dadosModulo.Network:FireServer("RotativeShop","Buy",offer.name)
+                end)
+                if success then
+                    P.status="Pedido enviado: "..offer.name.." por "..offer.price.." Gold"
+                    notify(P.status)
+                    task.wait(1.5)
+                    local after=wallet()
+                    if after and after<gold then
+                        P.purchases+=1
+                        P.status="Compra confirmada pelo saldo: "..offer.name
+                    else
+                        P.status="Pedido enviado; resultado ainda não confirmado pelo saldo"
+                    end
+                else
+                    history[cycle]=nil
+                    P.status="Erro ao enviar compra: "..tostring(err)
+                    warn("[GR Hub Fruit Shop]",P.status)
+                end
+            end)
+            if not ok then
+                P.status="Erro na loja: "..tostring(err)
+                warn("[GR Hub Fruit Shop]",err)
+            end
+            task.wait(P.active and 4 or 1.5)
+        end
+        P.cleanup()
+    end)
+    return P
+end)()
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V8.1 - AUTO RAID",
+        "GR HUB V9.0 - LOJA DE FRUTAS",
+        "Auto Comprar Frutas: "..tostring(FruitShopAuto.active),
+        "Loja: "..tostring(FruitShopAuto.status),
+        "Tentativas compra frutas: "..tostring(FruitShopAuto.attempts),
+        "Compras confirmadas pelo saldo: "..tostring(FruitShopAuto.purchases),
+        "Última fruta da loja: "..tostring(FruitShopAuto.lastFruit),
         "Auto Raid: "..tostring(State.AutoRaid),
         "Raid status: "..tostring(Raid.status),
         "Raid state: "..tostring(Raid.state),
@@ -2919,6 +3174,19 @@ end
 Hub.CreateToggle(secFrutas,"Auto Farm Fruit (TP)",definirFarmFruta)
 Hub.CreateToggle(secFrutas,"Fruit ESP",definirESPFruta)
 Hub.CreateToggle(secFrutas,"Auto Store Fruit",definirStoreFruta)
+local secShop=Hub.CreateSection("Fruits","LOJA ROTATIVA - AUTO COMPRAR")
+if type(Hub.CreateMultiDropdown)=="function" then
+    Hub.CreateMultiDropdown(secShop,"Frutas para comprar",FruitShopAuto.names,FruitShopAuto.setSelected,{})
+else
+    Hub.CreateDropdown(secShop,"Fruta para comprar",FruitShopAuto.names,function(v)
+        FruitShopAuto.setSelected({v})
+    end)
+end
+Hub.CreateDropdown(secShop,"Preço máximo",FruitShopAuto.priceOptions,FruitShopAuto.setPrice)
+Hub.CreateDropdown(secShop,"Reservar Gold",FruitShopAuto.reserveOptions,FruitShopAuto.setReserve)
+Hub.CreateToggle(secShop,"Permitir substituir fruta equipada",FruitShopAuto.setReplace)
+Hub.CreateToggle(secShop,"Auto Comprar Frutas",FruitShopAuto.setAuto,nil,false)
+Hub.CreateButton(secShop,"Consultar estoque de frutas",FruitShopAuto.showStock,"search")
 local secPesca=Hub.CreateSection("Fishing","AUTO FISHING")
 Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
 Hub.CreateToggle(secPesca,"Auto Lançar Vara",mudarAutoCastFishing)
@@ -2956,6 +3224,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V8.4] Fishing icon corrigido e teleporte de ilhas com voo controlado")
+print("[GR Hub V9.0] Auto Comprar Frutas RotativeShop com seleção, preço máximo, reserva Gold e estoque")
 
 end)()
