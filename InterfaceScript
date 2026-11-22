@@ -160,6 +160,9 @@ for _,group in pairs(catalog) do
 end
 local aliases={main="home",house="home",combat="swords",combate="swords",fruits="grape",fruit="grape",fruta="grape",frutas="grape",inventory="backpack",inventario="backpack",player="user",jogador="user",teleport="map-pin",quests="scroll",quest="scroll",shop="shopping-cart",config="settings",auto="bot",farm="bot",autofarm="bot",visual="eye",esp="eye",zap="electricity",footprints="move",pesca="anchor",boss="crown",icons="layout-grid",icon="layout-grid"}
 for k,v in pairs(aliases) do Icons[k]=Icons[v] end
+Icons.fish="rbxassetid://1160001531"
+Icons.fishing=Icons.fish
+Icons.peixes=Icons.fish
 local function getIcon(value)
     if value==nil or value=="" then return nil end
     local raw=tostring(value)
