@@ -51,6 +51,7 @@ return function(C)
         Talk_PrisonerSister_SQ="Prison"
     }
     local TALK={
+        Talk_SkyHermitSummit={"SkyHermitSummit","Learn"},
         Talk_MourningWoman_SQ={"MourningWoman","Deliver"},
         Talk_WitchPotion_SQ={"Witch","DeliverMoonflower"},
         Talk_CircusJuggler_SQ={"CircusJuggler","Talk"},
@@ -427,7 +428,7 @@ return function(C)
         local _,root,hum,ok=alive()
         if not ok then return end
         local npcPos,npcModel=converseInfo(key,root)
-        local target=pos or npcPos
+        local target=npcPos or pos
         R.lastNPC=key
         if not moveTo(target,7,"Indo conversar: "..key) then return end
         local action=spec and spec[2] or "Talk"
@@ -664,8 +665,9 @@ return function(C)
         local zoneIsland=zone and zone.Parent and zone.Parent.Parent
             and zone.Parent.Parent.Name or nil
         local targetIsland=TALK_ISLAND[id] or zoneIsland or quest.island
-        if quest.name=="The Sky Hermit" and id=="Activate_HeavenstepCheckpoints" then
-            R.status="Heavenstep: seguindo próxima bandeira"
+        if quest.name=="The Sky Hermit" and
+            (id=="Activate_HeavenstepCheckpoints" or id=="Talk_SkyHermitSummit") then
+            R.status="Heavenstep: seguindo objetivo na montanha"
         elseif targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
         elseif travelTo(quest) then return end
