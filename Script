@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -790,7 +790,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1833,6 +1833,8 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubSecondaryStop)=="function" then pcall(env.GRHubSecondaryStop) end
+    env.GRHubSecondaryStop=nil
     if type(env.GRHubBossStop)=="function" then pcall(env.GRHubBossStop) end
     env.GRHubBossStop=nil
     State.AutoBoss=false
@@ -1889,7 +1891,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -5373,6 +5375,56 @@ local VoxHaki = (function()
     return V
 end)()
 
+local SecondaryQuestAuto={enabled=false,status="Inicializando",name=nil,objective=nil,total=0,completed=0,requests=0,failures=0}
+function SecondaryQuestAuto.setAuto(_) warn("[GR Secondary Quest] Módulo indisponível") end
+local okSecondary,errSecondary=pcall(function()
+    local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SecondaryQuestAuto"
+    local code=game:HttpGet(url)
+    if not code or code=="" then error("SecondaryQuestAuto vazio") end
+    local factory=assert(loadstring(code))
+    SecondaryQuestAuto=factory()({
+        player=player,
+        State=State,
+        FeatureState=FeatureState,
+        mainModulo=mainModulo,
+        dadosModulo=dadosModulo,
+        CombatEvent=CombatEvent,
+        IslandTeleport=IslandTeleport,
+        VoxHaki=VoxHaki,
+        Raid=Raid,
+        BossFarm=BossFarm,
+        Sea=Sea,
+        running=running,
+        character=character,
+        lerDados=lerDados,
+        lerNivel=lerNivel,
+        localAtual=localAtual,
+        posicaoDe=posicaoDe,
+        getRoute=function() return rota end,
+        definirDestino=definirDestino,
+        liberarVoo=liberarVoo,
+        encontrarInimigo=encontrarInimigo,
+        rootInimigo=rootInimigo,
+        valido=valido,
+        equiparArma=equiparArma,
+        enviarQuest=enviarQuest,
+        definirFarm=definirFarm,
+        definirFarmFruta=definirFarmFruta,
+        encontrarVaraPesca=encontrarVaraPesca,
+        mudarAutoFishing=mudarAutoFishing,
+        mudarAutoCastFishing=mudarAutoCastFishing
+    })
+end)
+if not okSecondary then
+    SecondaryQuestAuto.status="Falha ao carregar: "..tostring(errSecondary)
+    warn("[GR Secondary Quest]",errSecondary)
+end
+env.GRHubSecondaryStop=function()
+    if SecondaryQuestAuto and type(SecondaryQuestAuto.stop)=="function" then
+        SecondaryQuestAuto.stop()
+    end
+end
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
@@ -5441,6 +5493,15 @@ local function copiarDebug()
         "Tentativas compra frutas: "..tostring(FruitShopAuto.attempts),
         "Compras confirmadas pelo saldo: "..tostring(FruitShopAuto.purchases),
         "Última fruta da loja: "..tostring(FruitShopAuto.lastFruit),
+        "Auto Secondary Quest: "..tostring(SecondaryQuestAuto.enabled),
+        "Secondary Quest catalogo: "..tostring(SecondaryQuestAuto.total),
+        "Secondary Quest ativa: "..tostring(SecondaryQuestAuto.name),
+        "Secondary Quest objetivo: "..tostring(SecondaryQuestAuto.objective),
+        "Secondary Quest progresso: "..tostring(SecondaryQuestAuto.progress),
+        "Secondary Quest status: "..tostring(SecondaryQuestAuto.status),
+        "Secondary Quest finalizadas: "..tostring(SecondaryQuestAuto.completed),
+        "Secondary Quest pedidos: "..tostring(SecondaryQuestAuto.requests),
+        "Secondary Quest erros: "..tostring(SecondaryQuestAuto.failures),
         "Auto Raid: "..tostring(State.AutoRaid),
         "Raid status: "..tostring(Raid.status),
         "Raid state: "..tostring(Raid.state),
@@ -5676,6 +5737,8 @@ Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
 Hub.CreateToggle(farm,"Auto Farm Quest",definirFarm)
+local secSecondary=Hub.CreateSection("Main","QUESTS SECUNDÁRIAS")
+Hub.CreateToggle(secSecondary,"Auto Quest Secundária",SecondaryQuestAuto.setAuto,"scroll-text","gr_auto_secondary")
 local secBoss=Hub.CreateSection("Main","AUTO BOSS")
 local bossSelector
 local function refreshBossList()
