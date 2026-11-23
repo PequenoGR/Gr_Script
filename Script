@@ -5262,9 +5262,13 @@ local function copiarDebug()
     for _,s in ipairs(lerLabels()) do table.insert(t,s) end
     local result=table.concat(t,"\n")
     local function tryCopy(txt)
-        local api={setclipboard,toclipboard,writeclipboard}
-        if type(env.setclipboard)=="function" then table.insert(api,env.setclipboard) end
-        if type(env.toclipboard)=="function" then table.insert(api,env.toclipboard) end
+        local api={}
+        for _,fn in ipairs({
+            setclipboard or false,toclipboard or false,writeclipboard or false,
+            env.setclipboard or false,env.toclipboard or false,env.writeclipboard or false
+        }) do
+            if type(fn)=="function" then table.insert(api,fn) end
+        end
         for _,fn in ipairs(api) do
             if type(fn)=="function" then
                 local ok=pcall(fn,txt)
