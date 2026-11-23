@@ -4959,8 +4959,17 @@ local VoxHaki = (function()
                             if isRod(item) then owned=true;break end
                         end
                     end
-                    V.status=owned and "Auto Haki: vara equipada; aguardando Backpack"
-                        or "Auto Haki: falta Fishing Rod (Fisherman, 5000 Gold durante a missão)"
+                    if not owned and objectiveActive("Buy_FishingRod_WB")
+                        and dadosModulo and dadosModulo.Network
+                        and type(dadosModulo.Network.SafeInvokeServer)=="function" then
+                        autoAction("HakiBuyRod",12,function()
+                            local answer=dadosModulo.Network:SafeInvokeServer(5,"Elysium_Converse","Fisherman")
+                            V.status="Auto Haki: compra da vara com Fisherman: "..tostring(answer)
+                        end)
+                    else
+                        V.status=owned and "Auto Haki: vara equipada; aguardando Backpack"
+                            or "Auto Haki: sem vara no inventário; compra pelo Fisherman requer Buy_FishingRod_WB"
+                    end
                 end
             else
                 local bank=fishShorePoint(marker)
