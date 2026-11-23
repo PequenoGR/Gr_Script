@@ -5479,7 +5479,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V11.7 - BOBO E TOMATES CORRIGIDOS",
+        "GR HUB V11.8 - BOBO ROTA E MINIGAME",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5568,6 +5568,12 @@ local function copiarDebug()
         "Secondary Quest Bobo momento do toque: "..tostring(SecondaryQuestAuto.tomatoPressAt),
         "Secondary Quest Bobo distancia: "..tostring(SecondaryQuestAuto.clownDistance),
         "Secondary Quest Bobo saida do circo: "..tostring(SecondaryQuestAuto.clownDoorStatus),
+        "Secondary Quest Bobo tentativas porta: "..tostring(SecondaryQuestAuto.clownDoorAttempts),
+        "Secondary Quest Bobo minigame aberto: "..tostring(SecondaryQuestAuto.clownMiniRunning),
+        "Secondary Quest Bobo GUI encontrada: "..tostring(SecondaryQuestAuto.clownGuiFound),
+        "Secondary Quest Bobo eventos iniciar: "..tostring(SecondaryQuestAuto.clownMiniSeen),
+        "Secondary Quest Bobo janela acerto: "..tostring(SecondaryQuestAuto.clownInputWindow),
+        "Secondary Quest Bobo metodo entrada: "..tostring(SecondaryQuestAuto.clownLastInputMethod),
         "Auto Sky Hermit: "..tostring(SkyHermitAuto.enabled),
         "Sky Hermit status: "..tostring(SkyHermitAuto.status),
         "Sky Hermit etapa: "..tostring(SkyHermitAuto.stage),
