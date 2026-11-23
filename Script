@@ -826,7 +826,7 @@ local function atualizarVoo(dt)
             faseVoo="Boss: retorno concluído"
             return
         end
-        local velocity=math.max(FeatureState.bossReturnSpeed or 900,modo.Velocidade)
+        local velocity=math.max(FeatureState.bossReturnSpeed or 5000,modo.Velocidade)
         local step=math.min(distance,velocity*math.min(dt,.1))
         char:TranslateBy(offset.Unit*step)
         faseVoo="Boss: retorno rápido"
@@ -3259,7 +3259,7 @@ local BossFarm = (function()
         lastHP=nil,lastEnemy=nil,ability=nil,dead=false,lastError=0,
         dodgeUntil=0,dodgePoint=nil,dodges=0,lastDodge=0,dodgeReason="-",
         lastPlayerHP=nil,lastThreatToken=nil,lastDangerScan=-10,zones={},hazardsFound=0,currentDanger="-",
-        dodgeMode="Equilibrado",returnSpeed=900,riskScore=0,safePoint=nil,blockedDodges=0,
+        dodgeMode="Equilibrado",returnSpeed=5000,riskScore=0,safePoint=nil,blockedDodges=0,
         lastCue=nil,cueAt=0,retreatUntil=0,nextRetreat=0,scanCount=0
     }
     local function enemyRoot(model)
@@ -3441,13 +3441,13 @@ local BossFarm = (function()
         end
     end
     FeatureState.bossDodgeSpeed=740
-    FeatureState.bossReturnSpeed=900
+    FeatureState.bossReturnSpeed=5000
     function B.setReturnSpeed(v)
         if type(v)=="table" then v=v.Name or v.Value or v.Valor end
         local choices={
-            ["Turbo (900)"]=900,
-            ["Rápido (700)"]=700,
-            ["Ultra (1150)"]=1150
+            ["Turbo (5000)"]=5000,
+            ["Rápido (2500)"]=2500,
+            ["Ultra (10000)"]=10000
         }
         local value=choices[v]
         if value then
@@ -3818,7 +3818,7 @@ local BossFarm = (function()
         end
         local distance=(root.Position-enemy.Position).Magnitude
         local remaining=(root.Position-target).Magnitude
-        if remaining>12 and not blocked(root.Position,target) then
+        if remaining>3 and not blocked(root.Position,target) then
             B.status="Voltando rápido ao boss: "..bossName(boss)
             definirDestino(target,"BossReturn")
         else
@@ -3888,7 +3888,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.1 - AUTO BOSS RETORNO RÁPIDO",
+        "GR HUB V10.2 - RETORNO ULTRA RÁPIDO",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -4037,7 +4037,7 @@ end
 refreshBossList()
 Hub.CreateToggle(secBoss,"Auto Boss",BossFarm.setAuto,"crown",false)
 Hub.CreateDropdown(secBoss,"Modo de Esquiva",{"Equilibrado","Agressivo","Defensivo"},BossFarm.setDodgeMode)
-Hub.CreateDropdown(secBoss,"Velocidade de retorno",{"Turbo (900)","Rápido (700)","Ultra (1150)"},BossFarm.setReturnSpeed)
+Hub.CreateDropdown(secBoss,"Velocidade de retorno",{"Turbo (5000)","Rápido (2500)","Ultra (10000)"},BossFarm.setReturnSpeed)
 Hub.CreateButton(secBoss,"Atualizar lista de bosses",refreshBossList,"refresh-cw")
 Hub.CreateButton(secBoss,"Status do Auto Boss",BossFarm.showStatus,"eye")
 local secFrutas=Hub.CreateSection("Fruits","AUTO FRUIT")
@@ -4103,6 +4103,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.1] Auto Boss retorna rápido após esquivar, sem subir devagar")
+print("[GR Hub V10.2] Auto Boss: retorno ultra rápido 2500, 5000 ou 10000 studs/s")
 
 end)()
