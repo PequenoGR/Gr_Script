@@ -29,7 +29,10 @@ return function(C)
         phantomLever=0,phantomAttempts=0,phantomDistance=nil,
         phantomAction="-",phantomStatus="-",phantomObjectFound=false,
         phantomStage="-",phantomInsideEntry=false,phantomRunDistance=nil,
-        phantomRunSteps=0,phantomActiveId=nil,phantomRunBlocked=0
+        phantomRunSteps=0,phantomActiveId=nil,phantomRunBlocked=0,
+        actionHandler="-",actionBlocked="-",actionRetries=0,
+        minigameName="-",minigameClicks=0,minigameFound=0,
+        minigameLastClick="-",stoneRequests=0,stoneStatus="-"
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
@@ -1136,6 +1139,95 @@ return function(C)
         end)
         return true
     end
+    local stoneMiniLastTap=setmetatable({}, {__mode="k"})
+    local miniSessionModule
+    pcall(function()
+        local file=modulePath(RS,{"Modules","Addons","MinigamesSystem"})
+        if file then miniSessionModule=require(file) end
+    end)
+    local miniInput
+    pcall(function() miniInput=game:GetService("VirtualInputManager") end)
+    local function getActiveMini()
+        local client=miniSessionModule and miniSessionModule.IsClient
+        return client and client.Active or nil
+    end
+    local function pressMiniButton(button)
+        if not button or not button:IsA("GuiButton") or not button.Parent then return false,"-" end
+        if type(getconnections)=="function" then
+            local ok,conns=pcall(getconnections,button.MouseButton1Down)
+            if ok and type(conns)=="table" then
+                for _,conn in ipairs(conns) do
+                    local okCall=pcall(function() conn:Fire() end)
+                    if not okCall then
+                        local fn
+                        pcall(function() fn=conn.Function end)
+                        if type(fn)=="function" then okCall=pcall(fn) end
+                    end
+                    if okCall then return true,"connections" end
+                end
+            end
+        end
+        if type(firesignal)=="function" then
+            if pcall(firesignal,button.MouseButton1Down) then return true,"firesignal" end
+        end
+        if miniInput then
+            local pos,size=button.AbsolutePosition,button.AbsoluteSize
+            if size.X>0 and size.Y>0 then
+                local x,y=math.floor(pos.X+size.X*.5),math.floor(pos.Y+size.Y*.5)
+                local ok=pcall(function()
+                    miniInput:SendMouseButtonEvent(x,y,0,true,game,0)
+                    miniInput:SendMouseButtonEvent(x,y,0,false,game,0)
+                end)
+                if ok then return true,"virtualTouch" end
+            end
+        end
+        return false,"touch unavailable"
+    end
+    local function handleStoneMini()
+        if not R.enabled or C.State.AutoHaki then return end
+        local mini=getActiveMini()
+        R.minigameName=mini and tostring(mini.Name) or "-"
+        if not mini or mini.Name~="StoneBreak" then return end
+        local gui=player.PlayerGui:FindFirstChild("StoneBreakGui")
+        if not gui or not gui.Enabled then
+            R.stoneStatus="StoneBreak ativo, esperando interface"
+            return
+        end
+        local targetLayer=gui:FindFirstChild("Targets",true)
+        if not targetLayer then return end
+        R.minigameFound=0
+        for _,frame in ipairs(targetLayer:GetChildren()) do
+            if frame:IsA("GuiObject") and frame.Name:match("^Target%d+")
+                and frame.Visible then
+                local hit=frame:FindFirstChild("Hit")
+                if hit and hit:IsA("GuiButton") and hit.Visible then
+                    R.minigameFound+=1
+                    if os.clock()-(stoneMiniLastTap[hit] or -100)>.28 then
+                        stoneMiniLastTap[hit]=os.clock()
+                        local success,method=pressMiniButton(hit)
+                        if success then
+                            R.minigameClicks+=1
+                            R.minigameLastClick=frame.Name.." / "..method
+                            R.stoneStatus="Acertando alvos do StoneBreak: "..R.minigameClicks
+                            R.status=R.stoneStatus
+                        end
+                    end
+                end
+            end
+        end
+    end
+    task.spawn(function()
+        while C.running() do
+            if R.enabled and not C.State.AutoHaki then
+                local ok,err=pcall(handleStoneMini)
+                if not ok then
+                    R.failures+=1
+                    R.stoneStatus="Erro no StoneBreak: "..tostring(err)
+                end
+            end
+            task.wait(R.enabled and .045 or 1.1)
+        end
+    end)
     local function doZone(quest,obj,pos)
         local id=tostring(obj.ObjectiveID or "")
         if not zoneModules[id] then
@@ -1148,6 +1240,22 @@ return function(C)
         if passiveZone[id] then
             R.zoneStatus="Zona passiva "..id
             R.status="Zona alcançada; aguardando atualização: "..id
+            return
+        end
+        if id:match("^Break_TrainingStone_FS_%d+$") then
+            local mini=getActiveMini()
+            if mini and mini.Name=="StoneBreak" then
+                R.stoneStatus="Minigame da pedra em execução"
+                R.status=R.stoneStatus
+                return
+            end
+            once("SQTrainingStone:"..id,2.6,function()
+                R.stoneRequests+=1
+                R.zoneStatus="Punch "..id
+                R.stoneStatus="Pedindo minigame "..id
+                server("QuestZones",id,"Punch")
+                R.status=R.stoneStatus
+            end)
             return
         end
         if zoneCustom[id] then
