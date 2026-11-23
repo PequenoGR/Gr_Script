@@ -4018,7 +4018,7 @@ local VoxHaki = (function()
         autoMini=false,autoMiniStart=false,autoMiniFishing=false,
         managedFish=false,savedFishing=false,savedCastFishing=false,fishStatus="-",
         fishingReady=false,fishBank=nil,fishMarker=nil,shoreCache=nil,
-        fishingPlatform=nil,fishingPlatformY=nil,fishingPlatformCharacter=nil,
+        fishingHover=nil,fishingHoverPosition=nil,fishingHoverRoot=nil,
         miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
         miniLastStart=-100,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
@@ -4495,93 +4495,69 @@ local VoxHaki = (function()
             end
         end
     end
-    local function destroyHakiFishingPlatform()
-        if V.fishingPlatform then
-            pcall(function() V.fishingPlatform:Destroy() end)
+    local function destroyHakiFishingHover()
+        if V.fishingHover then
+            pcall(function() V.fishingHover:Destroy() end)
         end
-        V.fishingPlatform=nil
-        V.fishingPlatformY=nil
-        V.fishingPlatformCharacter=nil
+        V.fishingHover=nil
+        V.fishingHoverPosition=nil
+        V.fishingHoverRoot=nil
     end
-    local function updateHakiFishingPlatform()
+    local function fishingHoverPoint(marker)
+        if typeof(marker)~="Vector3" then return nil end
+        local _,root,hum=character()
+        if not root or not hum then return nil end
+        local params=RaycastParams.new()
+        params.FilterType=Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances={workspace.Terrain}
+        params.IgnoreWater=false
+        local start=Vector3.new(marker.X,math.max(marker.Y,root.Position.Y)+300,marker.Z)
+        local hit=workspace:Raycast(start,Vector3.new(0,-1000,0),params)
+        local surface=hit and hit.Position.Y or marker.Y
+        local clearance=math.max(4.5,hum.HipHeight+root.Size.Y*.5+1.8)
+        return Vector3.new(marker.X,surface+clearance,marker.Z)
+    end
+    local function updateHakiFishingHover()
         local char,root,hum=character()
         if not char or not root or not hum or hum.Health<=0 then
-            destroyHakiFishingPlatform()
+            destroyHakiFishingHover()
             return false
         end
-        if V.fishingPlatformCharacter and V.fishingPlatformCharacter~=char then
-            destroyHakiFishingPlatform()
+        if V.fishingHoverRoot and V.fishingHoverRoot~=root then
+            destroyHakiFishingHover()
         end
-        local platform=V.fishingPlatform
-        if not platform or not platform.Parent then
-            local marker=V.fishMarker
-            local waterHeight=nil
-            local params=RaycastParams.new()
-            params.FilterType=Enum.RaycastFilterType.Include
-            params.FilterDescendantsInstances={workspace.Terrain}
-            params.IgnoreWater=false
-            for _,position in ipairs({
-                typeof(marker)=="Vector3" and marker or root.Position,
-                root.Position
-            }) do
-                local start=Vector3.new(position.X,math.max(position.Y,root.Position.Y)+220,position.Z)
-                local ray=workspace:Raycast(start,Vector3.new(0,-700,0),params)
-                if ray and ray.Material==Enum.Material.Water then
-                    waterHeight=ray.Position.Y
-                    break
-                end
-            end
-            local feet=root.Position.Y-hum.HipHeight-root.Size.Y*.5
-            local surface=waterHeight and waterHeight+0.8 or feet-0.1
-            if not waterHeight and hum:GetState()==Enum.HumanoidStateType.Swimming then
-                surface=feet+2.5
-            end
-            platform=Instance.new("Part")
-            platform.Name="GRHakiFishingPlatform"
-            platform.Size=Vector3.new(5,0.55,5)
-            platform.Anchored=true
-            platform.CanCollide=true
-            platform.CanTouch=false
-            platform.CanQuery=false
-            platform.Transparency=1
-            platform.CastShadow=false
-            platform.Locked=true
-            platform.Position=Vector3.new(root.Position.X,surface-platform.Size.Y*.5,root.Position.Z)
-            platform.Parent=workspace
-            V.fishingPlatform=platform
-            V.fishingPlatformY=platform.Position.Y
-            V.fishingPlatformCharacter=char
+        local goal=V.fishingHoverPosition
+        if typeof(goal)~="Vector3" then return false end
+        local hold=V.fishingHover
+        if not hold or not hold.Parent then
+            hold=Instance.new("BodyPosition")
+            hold.Name="GRHakiFishingHover"
+            hold.MaxForce=Vector3.new(1e8,1e8,1e8)
+            hold.P=65000
+            hold.D=8500
+            hold.Position=goal
+            hold.Parent=root
+            V.fishingHover=hold
+            V.fishingHoverRoot=root
+            root.AssemblyLinearVelocity=Vector3.zero
         end
-        local surfaceY=(V.fishingPlatformY or platform.Position.Y)+platform.Size.Y*.5
-        local minimumY=surfaceY+hum.HipHeight+root.Size.Y*.5+0.15
-        if root.Position.Y<minimumY-0.3 then
-            pcall(function()
-                local rotation=root.CFrame.Rotation
-                root.CFrame=CFrame.new(root.Position.X,minimumY,root.Position.Z)*rotation
-                root.AssemblyLinearVelocity=Vector3.zero
-                if hum:GetState()==Enum.HumanoidStateType.Swimming then
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                end
-            end)
+        hold.Position=goal
+        if hum:GetState()==Enum.HumanoidStateType.Swimming then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
         end
-        platform.Position=Vector3.new(root.Position.X,V.fishingPlatformY,root.Position.Z)
         return true
     end
-    local lastPlatformFollow=0
     connect(RunService.Heartbeat,function()
         if not running() then return end
-        local platform=V.fishingPlatform
-        if not platform or not platform.Parent then return end
+        if not V.fishingHover then return end
         if not V.fullAuto or V.activeObjective~="Catch_Fish" then
-            destroyHakiFishingPlatform()
+            destroyHakiFishingHover()
             return
         end
-        if os.clock()-lastPlatformFollow<0.06 then return end
-        lastPlatformFollow=os.clock()
-        updateHakiFishingPlatform()
+        updateHakiFishingHover()
     end)
     local function restoreHakiFishing()
-        destroyHakiFishingPlatform()
+        destroyHakiFishingHover()
         if V.managedFish then
             V.managedFish=false
             if State.AutoFishing~=V.savedFishing then mudarAutoFishing(V.savedFishing) end
@@ -4615,13 +4591,13 @@ local VoxHaki = (function()
             V.savedCastFishing=State.AutoCastFishing
             V.managedFish=true
         end
-        if not updateHakiFishingPlatform() then
-            V.fishStatus="Aguardando plataforma da pesca"
+        if not updateHakiFishingHover() then
+            V.fishStatus="Aguardando voo parado da pesca"
             return
         end
         if not State.AutoFishing then mudarAutoFishing(true) end
         if not State.AutoCastFishing then mudarAutoCastFishing(true) end
-        V.fishStatus="Pescando 10 peixes Vox Sense sobre plataforma invisível"
+        V.fishStatus="Pescando 10 peixes Vox Sense parado no ar"
     end
     function V.setMiniFishing(v)
         V.autoMiniFishing=(v==true)
@@ -5141,19 +5117,24 @@ local VoxHaki = (function()
                     end
                 end
             else
-                local bank=fishShorePoint(marker)
-                V.fishBank=bank
-                if not bank then
+                local point=fishingHoverPoint(marker)
+                V.fishBank=point
+                if not point then
                     stopHakiRoute()
-                    V.status="Auto Haki: sem margem segura carregada"
-                elseif moveHakiTo(bank,4,"indo à margem segura para pescar") then
-                    if updateHakiFishingPlatform() then
+                    V.fishingReady=false
+                    V.status="Auto Haki: ponto de pesca não carregado"
+                elseif V.fishingHover and V.fishingHoverPosition then
+                    V.fishingReady=updateHakiFishingHover()
+                    V.status="Auto Haki: parado no ar pescando 10 peixes"
+                elseif moveHakiTo(point-Vector3.new(0,2.5,0),4,"voando até a água para pescar") then
+                    V.fishingHoverPosition=point
+                    if updateHakiFishingHover() then
                         V.fishingReady=true
                         FeatureState.hakiFishingLookAt=marker
-                        V.status="Auto Haki: pescando os 10 peixes sobre plataforma"
+                        V.status="Auto Haki: parado no ar, pescando 10 peixes"
                     else
                         V.fishingReady=false
-                        V.status="Auto Haki: aguardando criação da plataforma"
+                        V.status="Auto Haki: iniciando voo parado"
                     end
                 end
             end
@@ -5330,8 +5311,8 @@ local function copiarDebug()
         "Vox Fishing Ready: "..tostring(VoxHaki.fishingReady),
         "Vox Fishing Bank: "..tostring(VoxHaki.fishBank),
         "Vox Fishing Marker: "..tostring(VoxHaki.fishMarker),
-        "Vox Plataforma Pesca: "..tostring(VoxHaki.fishingPlatform~=nil and VoxHaki.fishingPlatform.Parent~=nil),
-        "Vox Plataforma Y: "..tostring(VoxHaki.fishingPlatformY),
+        "Vox Voo Parado Pesca: "..tostring(VoxHaki.fishingHover~=nil and VoxHaki.fishingHover.Parent~=nil),
+        "Vox Voo Parado Posicao: "..tostring(VoxHaki.fishingHoverPosition),
         "Vox CurrentLocation: "..tostring(VoxHaki.currentHakiLocation),
         "Vox Inimigos Haki encontrados: "..tostring(VoxHaki.hakiEnemyCount),
         "Vox Alvo Haki: "..tostring(VoxHaki.hakiEnemyTarget),
