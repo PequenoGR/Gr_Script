@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=true, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -4014,7 +4014,7 @@ end)()
 local VoxHaki = (function()
     local V={
         autoArmor=false,autoSense=false,autoUnlock=false,autoMastery=false,
-        fullAuto=true,autoTrack=false,status="Auto Haki Completo ativado",lastRequest=-100,lastToggle={},
+        fullAuto=false,autoTrack=false,status="Auto Haki desligado",lastRequest=-100,lastToggle={},
         autoMini=false,autoMiniStart=false,autoMiniFishing=false,
         managedFish=false,savedFishing=false,savedCastFishing=false,fishStatus="-",
         fishingReady=false,fishBank=nil,fishMarker=nil,shoreCache=nil,
@@ -5243,30 +5243,9 @@ local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
 local hakiPanel=Hub.CreateSection("Player","HAKI / VOX")
-local hakiFullButton
-local function updateHakiFullButton()
-    if hakiFullButton then
-        local label=VoxHaki.fullAuto and "Auto Haki Completo: LIGADO (usa Gold)" or "Auto Haki Completo: DESLIGADO"
-        hakiFullButton.Text="       "..label
-        hakiFullButton:SetAttribute("GRSearchText","Auto Haki Completo "..label)
-    end
-end
-hakiFullButton=Hub.CreateButton(hakiPanel,"Auto Haki Completo: LIGADO (usa Gold)",function()
-    VoxHaki.setFullAuto(not VoxHaki.fullAuto)
-    updateHakiFullButton()
-end,"zap")
-updateHakiFullButton()
-Hub.CreateToggle(hakiPanel,"Auto ativar Vox Armor",VoxHaki.setArmor)
-Hub.CreateToggle(hakiPanel,"Auto ativar Vox Sense",VoxHaki.setSense)
-Hub.CreateToggle(hakiPanel,"Auto iniciar treino Haki (usa Gold)",VoxHaki.setUnlock)
-Hub.CreateToggle(hakiPanel,"Auto aceitar evoluções Vox (usa Gold)",VoxHaki.setMastery)
-Hub.CreateToggle(hakiPanel,"Auto MiniGames Haki (Dodge / StoneBreak / Spar)",VoxHaki.setMini)
-Hub.CreateToggle(hakiPanel,"Auto iniciar minigame perto do treino",VoxHaki.setMiniStart)
-Hub.CreateToggle(hakiPanel,"Auto Fishing para 10 peixes Vox Sense",VoxHaki.setMiniFishing)
-Hub.CreateButton(hakiPanel,"Status dos MiniGames Haki",VoxHaki.showMini,"gamepad-2")
-Hub.CreateToggle(hakiPanel,"Auto rastrear missão Vox",VoxHaki.setTrack)
-Hub.CreateButton(hakiPanel,"Ir ao Askard (Skull Island)",VoxHaki.goTrainer,"map-pin")
-Hub.CreateButton(hakiPanel,"Status Haki / Poderes",VoxHaki.statusButton,"eye")
+Hub.CreateToggle(hakiPanel,"Auto Haki",function(enabled)
+    VoxHaki.setFullAuto(enabled==true)
+end,"zap","gr_auto_haki")
 local reset=Hub.CreateSection("Player","PERSONAGEM")
 Hub.CreateButton(reset,"Resetar Personagem",function()
     liberarVoo()
@@ -5286,6 +5265,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.8] Auto Haki Completo ligado: minigames, quest, Vox Armor/Sense e pesca de treino")
+print("[GR Hub V11] HAKI / VOX: controle unico Auto Haki para treinos, missoes, minigames e pesca")
 
 end)()
