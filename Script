@@ -49,6 +49,7 @@ local player = Players.LocalPlayer
 local env = getgenv()
 
 if type(env.GRHubStop) == "function" then pcall(env.GRHubStop) end
+if type(env.GRHubVoxMinigameStop) == "function" then pcall(env.GRHubVoxMinigameStop) end
 for _, key in ipairs({"GRHubConn", "GRHubChar", "GRHubAFK", "GRHubNoclip"}) do
     if env[key] then pcall(function() env[key]:Disconnect() end); env[key] = nil end
 end
@@ -4007,6 +4008,9 @@ local VoxHaki = (function()
     local V={
         autoArmor=false,autoSense=false,autoUnlock=false,autoMastery=false,
         autoTrack=false,status="Desligado",lastRequest=0,lastToggle={},
+        autoMini=false,autoMiniStart=false,miniStatus="Desligado",
+        miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
+        miniLastStart=0,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
         lastTracked=nil,requests=0,lastError=0
     }
     local QUESTS={"Vox Sense Training","Vox Armor Training","Vox Sense Mastery","Vox Armor Mastery"}
@@ -4270,6 +4274,311 @@ local VoxHaki = (function()
             " | Phantom Rush Lv."..soru.." | Heavenstep Lv."..geppo..
             " | "..tostring(quest or V.status)..state)
     end
+
+    local function objectiveActive(id)
+        local progress=getProgress()
+        local quests=mainModulo and mainModulo.QuestsUtils
+        if type(progress)~="table" or not quests or type(quests.IsObjectiveActive)~="function" then
+            return false
+        end
+        local ok,result=pcall(quests.IsObjectiveActive,progress,id)
+        return ok and result==true
+    end
+    local function hakiObjective(kind)
+        if kind=="StoneBreak" then
+            if objectiveActive("Train_VoxArmor_VX") then return true end
+            for i=1,12 do
+                if objectiveActive("Break_Stone_HK_"..i) then return true end
+            end
+            return false
+        end
+        return objectiveActive("Dodge_Stones_HK") or
+            objectiveActive("Dodge_Blindfold_HK") or
+            objectiveActive("Spar_Askard_HK") or
+            objectiveActive("Train_VoxSense_VX")
+    end
+    local miniVim
+    pcall(function() miniVim=game:GetService("VirtualInputManager") end)
+    local function sendKey(key)
+        local code=Enum.KeyCode[key]
+        if not code or not miniVim then return false end
+        local ok=pcall(function()
+            miniVim:SendKeyEvent(true,code,false,game)
+            miniVim:SendKeyEvent(false,code,false,game)
+        end)
+        if ok then V.miniInputs+=1 end
+        return ok
+    end
+    local function tap(button)
+        if not button or not button:IsA("GuiButton") or
+            not button.Parent or not button.Visible then return false end
+        local size=button.AbsoluteSize
+        local p=button.AbsolutePosition
+        if size.X<3 or size.Y<3 then return false end
+        local x=math.floor(p.X+size.X*.5)
+        local y=math.floor(p.Y+size.Y*.5)
+        local ok=false
+        if miniVim then
+            ok=pcall(function()
+                miniVim:SendMouseButtonEvent(x,y,0,true,game,0)
+                miniVim:SendMouseButtonEvent(x,y,0,false,game,0)
+            end)
+        end
+        if not ok and type(firesignal)=="function" then
+            ok=pcall(function() firesignal(button.MouseButton1Down) end)
+        end
+        if ok then V.miniInputs+=1 end
+        return ok
+    end
+    local function miniInput(key,mode)
+        local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
+        local btn
+        if gui then
+            if key=="Left" or key=="Right" then
+                btn=gui:FindFirstChild(key.."Touch",true)
+            elseif type(key)=="string" then
+                btn=gui:FindFirstChild(key.."Pad",true)
+            end
+        end
+        if btn and tap(btn) then return true end
+        local codes={Left="A",Right="D"}
+        return sendKey(codes[key] or key)
+    end
+    local function minigameInfo()
+        local root=RS:FindFirstChild("Modules")
+        local addons=root and root:FindFirstChild("Addons")
+        local module=addons and addons:FindFirstChild("MinigamesSystem")
+        if not module then return nil end
+        local ok,obj=pcall(require,module)
+        if ok and type(obj)=="table" then
+            V.miniManager=obj.IsClient
+        end
+        return V.miniManager
+    end
+    local function watchMinigame()
+        if V.miniConnection or not dadosModulo or not dadosModulo.Network
+            or type(dadosModulo.Network.OnClientEvent)~="function" then return end
+        local ok,conn=pcall(function()
+            return dadosModulo.Network.OnClientEvent("MinigamesService",function(action,payload)
+                if not running() then return end
+                if action=="Start" and type(payload)=="table" and
+                    (payload.name=="Dodge" or payload.name=="StoneBreak") then
+                    local info=payload.data
+                    V.miniSession={
+                        name=payload.name,id=payload.id,info=type(info)=="table" and info or {},
+                        started=os.clock(),next=1,seen={},wasPressed=false
+                    }
+                    V.miniStatus="Minigame detectado: "..payload.name
+                elseif action=="Stop" or action=="StopAll" then
+                    V.miniSession=nil
+                    V.miniHeld=false
+                end
+            end)
+        end)
+        if ok then V.miniConnection=conn end
+    end
+    local function minigameActive()
+        local manager=V.miniManager or minigameInfo()
+        local active=manager and manager.Active
+        if not active or
+            (active.Name~="Dodge" and active.Name~="StoneBreak") then
+            V.miniSession=nil
+            V.miniHeld=false
+            return nil
+        end
+        if not V.miniSession or
+            V.miniSession.name~=active.Name or
+            (active.Id and V.miniSession.id and active.Id~=V.miniSession.id) then
+            V.miniSession={
+                name=active.Name,id=active.Id,info={},
+                started=os.clock(),next=1,seen={},wasPressed=false
+            }
+        end
+        return active
+    end
+    local function doStoneClicks()
+        if not hakiObjective("StoneBreak") then
+            V.miniStatus="StoneBreak sem missão Vox ativa"
+            return
+        end
+        local gui=player.PlayerGui:FindFirstChild("StoneBreakGui")
+        if not gui or not gui.Enabled then return end
+        local layer=gui:FindFirstChild("Targets",true)
+        if not layer then return end
+        local session=V.miniSession
+        if not session then return end
+        V.miniStatus="Auto StoneBreak: tocando círculos"
+        for _,target in ipairs(layer:GetChildren()) do
+            if target.Name:match("^Target%d+$") then
+                local hit=target:FindFirstChild("Hit")
+                if hit and not session.seen[hit] and tap(hit) then
+                    session.seen[hit]=true
+                end
+            end
+        end
+    end
+    local function doDodge()
+        if not hakiObjective("Dodge") then
+            V.miniStatus="Dodge sem missão Vox ativa"
+            return
+        end
+        local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
+        if not gui or not gui.Enabled or gui:FindFirstChild("Result",true) then return end
+        local session=V.miniSession
+        if not session then return end
+        local info=session.info or {}
+        local mode=info.Mode or "Stones"
+        local schedule=info.Schedule
+        if type(schedule)=="table" and #schedule>0 then
+            local now=os.clock()-session.started
+            local note=schedule[session.next]
+            if type(note)=="table" then
+                local spawn=tonumber(note.SpawnTime) or 0
+                local travel=tonumber(info.Travel) or 0.6
+                local when=mode=="Spar" and math.max(spawn+.1,spawn+travel-.12)
+                    or spawn+travel-(info.Touch and .06 or .015)
+                if now>=when then
+                    local key=note.Key
+                    if type(key)=="string" and miniInput(key,mode) then
+                        V.miniStatus="Auto "..mode.." | nota "..session.next.."/"..#schedule
+                        session.next+=1
+                    elseif now>when+.55 then
+                        session.next+=1
+                    end
+                end
+            end
+            return
+        end
+        local letter=gui:FindFirstChild("Letter",true)
+        local keyHint=gui:FindFirstChild("KeyHint",true)
+        local fill=keyHint and keyHint:FindFirstChild("Fill",true)
+        if not letter or not fill then return end
+        local progress=fill.Size.X.Scale
+        if progress<.58 then
+            session.wasPressed=false
+            return
+        end
+        local threshold=mode=="Blind" and .93 or .90
+        if progress>=threshold and progress<=1.08 and not session.wasPressed then
+            local word=tostring(letter.Text):upper():gsub("%s+","")
+            local letters={
+                A="Left",LEFT="Left",D="Right",RIGHT="Right",
+                F="F",G="G",H="H"
+            }
+            local key=letters[word]
+            if key and os.clock()-V.miniLastPress>.15 and miniInput(key,mode) then
+                session.wasPressed=true
+                V.miniLastPress=os.clock()
+                V.miniStatus="Auto Dodge: "..word
+            end
+        end
+    end
+    local function tryStartHakiMini()
+        if not V.autoMini or not V.autoMiniStart or
+            os.clock()-V.miniLastStart<10 then return end
+        if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
+            FeatureState.islandTraveling or State.AutoFarmQuest or
+            emTransicao() then return end
+        if V.miniManager and V.miniManager.Active then return end
+        local _,root,hum=character()
+        if not root or not hum or hum.Health<=0 then return end
+        if hakiObjective("Dodge") then
+            local trainer=trainerPosition()
+            if trainer and (root.Position-trainer).Magnitude<=22 and
+                dadosModulo and dadosModulo.Network then
+                V.miniLastStart=os.clock()
+                if network("StartDodge") then
+                    V.miniStarts+=1
+                    V.miniStatus="Askard: pedindo início do Dodge"
+                end
+            end
+            return
+        end
+        if not hakiObjective("StoneBreak") then return end
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        local skull=areas and areas:FindFirstChild("Skull Island")
+        if not skull or not dadosModulo or not dadosModulo.Network then return end
+        local toCheck={}
+        for i=1,12 do
+            local id="Break_Stone_HK_"..i
+            if objectiveActive(id) then table.insert(toCheck,i) end
+        end
+        if #toCheck==0 and objectiveActive("Train_VoxArmor_VX") then
+            local data=lerDados()
+            local level=tonumber(data and data.Abilitys and data.Abilitys.Busoshoku) or 0
+            local steps={ [1]=10,[2]=11,[3]=12 }
+            local idx=steps[level] or 10
+            table.insert(toCheck,idx)
+        end
+        for _,i in ipairs(toCheck) do
+            local obj=skull:FindFirstChild("Stone_HK_"..i,true)
+            if obj and obj:IsA("BasePart") and obj.Transparency<.95
+                and (root.Position-obj.Position).Magnitude<14 then
+                V.miniLastStart=os.clock()
+                local ok=pcall(function()
+                    dadosModulo.Network:FireServer("QuestZones","Break_Stone_HK_"..i,"Punch")
+                end)
+                if ok then
+                    V.miniStarts+=1
+                    V.miniStatus="Pedra "..i..": iniciando treino"
+                end
+                return
+            end
+        end
+    end
+    function V.setMini(v)
+        V.autoMini=(v==true)
+        V.miniStatus=V.autoMini and "Aguardando minigame Haki" or "Desligado"
+        if V.autoMini then
+            minigameInfo()
+            watchMinigame()
+        end
+    end
+    function V.setMiniStart(v)
+        V.autoMiniStart=(v==true)
+        if V.autoMiniStart then V.miniLastStart=0 end
+    end
+    function V.showMini()
+        notify("Auto minigame: "..tostring(V.autoMini)..
+            " | Início perto do treino: "..tostring(V.autoMiniStart)..
+            " | Comandos enviados: "..V.miniInputs..
+            " | Inícios pedidos: "..V.miniStarts..
+            " | "..V.miniStatus)
+    end
+    env.GRHubVoxMinigameStop=function()
+        V.autoMini=false
+        V.autoMiniStart=false
+        V.miniSession=nil
+        local c=V.miniConnection
+        V.miniConnection=nil
+        if c then pcall(function() c:Disconnect() end) end
+    end
+    task.spawn(function()
+        while running() do
+            if V.autoMini then
+                local ok,err=pcall(function()
+                    watchMinigame()
+                    local active=minigameActive()
+                    if active then
+                        if active.Name=="Dodge" then doDodge()
+                        elseif active.Name=="StoneBreak" then doStoneClicks() end
+                    else
+                        tryStartHakiMini()
+                    end
+                end)
+                if not ok and os.clock()-V.lastError>5 then
+                    V.lastError=os.clock()
+                    V.miniStatus="Erro minigame: "..tostring(err)
+                    warn("[GR Hub Vox Minigames]",err)
+                end
+            end
+            task.wait(V.autoMini and .025 or .85)
+        end
+        if type(env.GRHubVoxMinigameStop)=="function" then
+            env.GRHubVoxMinigameStop()
+        end
+    end)
     task.spawn(function()
         while running() do
             local ok,err=pcall(function()
@@ -4294,7 +4603,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.6 - HAKI VOX AUTO",
+        "GR HUB V10.7 - VOX MINIGAMES AUTO",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -4314,6 +4623,10 @@ local function copiarDebug()
         "Vox Auto Mastery: "..tostring(VoxHaki.autoMastery),
         "Vox status: "..tostring(VoxHaki.status),
         "Vox pedidos enviados: "..tostring(VoxHaki.requests),
+        "Vox MiniGames auto: "..tostring(VoxHaki.autoMini),
+        "Vox MiniGames iniciar: "..tostring(VoxHaki.autoMiniStart),
+        "Vox MiniGames entradas: "..tostring(VoxHaki.miniInputs),
+        "Vox MiniGames status: "..tostring(VoxHaki.miniStatus),
         "Boss risco atual: "..tostring(BossFarm.riskScore),
         "Boss destino seguro: "..tostring(BossFarm.safePoint),
         "Boss leituras de perigo: "..tostring(BossFarm.scanCount),
@@ -4508,6 +4821,9 @@ Hub.CreateToggle(hakiPanel,"Auto ativar Vox Armor",VoxHaki.setArmor)
 Hub.CreateToggle(hakiPanel,"Auto ativar Vox Sense",VoxHaki.setSense)
 Hub.CreateToggle(hakiPanel,"Auto iniciar treino Haki (usa Gold)",VoxHaki.setUnlock)
 Hub.CreateToggle(hakiPanel,"Auto aceitar evoluções Vox (usa Gold)",VoxHaki.setMastery)
+Hub.CreateToggle(hakiPanel,"Auto MiniGames Haki (Dodge / StoneBreak / Spar)",VoxHaki.setMini)
+Hub.CreateToggle(hakiPanel,"Auto iniciar minigame perto do treino",VoxHaki.setMiniStart)
+Hub.CreateButton(hakiPanel,"Status dos MiniGames Haki",VoxHaki.showMini,"gamepad-2")
 Hub.CreateToggle(hakiPanel,"Auto rastrear missão Vox",VoxHaki.setTrack)
 Hub.CreateButton(hakiPanel,"Ir ao Askard (Skull Island)",VoxHaki.goTrainer,"map-pin")
 Hub.CreateButton(hakiPanel,"Status Haki / Poderes",VoxHaki.statusButton,"eye")
