@@ -771,7 +771,12 @@ local function definirDestino(destino,chave)
     if rota.concluida then
         local margem=chave=="SeaBoss" and 1 or ((chave=="RaidEnemy" or chave=="AutoBoss") and 2 or 6)
         local espera=chave=="SeaBoss" and 0.10 or ((chave=="RaidEnemy" or chave=="AutoBoss") and 0.18 or 0.35)
-        if (root.Position-destino).Magnitude>margem and tempo>espera then criarRota(root,destino,chave)
+        local distancia=(root.Position-destino).Magnitude
+        if chave=="RaidEnemy" or chave=="RaidDodge" or chave=="RaidFort" then
+            distancia=Vector3.new(root.Position.X-destino.X,0,root.Position.Z-destino.Z).Magnitude
+            margem=1.5
+        end
+        if distancia>margem and tempo>espera then criarRota(root,destino,chave)
         else rota.destino=destino end
         return
     end
@@ -794,6 +799,31 @@ local function atualizarVoo(dt)
     prepararVoo(char,root,hum)
     if rota~=r then return end
     if os.clock()-ultimaColisao>0.5 then ultimaColisao=os.clock();atualizarColisao(char) end
+    if State.AutoRaid and (r.chave=="RaidEnemy" or r.chave=="RaidDodge" or r.chave=="RaidFort") then
+        if FeatureState.raidHover then
+            pcall(function() FeatureState.raidHover:Destroy() end)
+            FeatureState.raidHover=nil
+        end
+        if bodyVelocity then
+            bodyVelocity.MaxForce=Vector3.new(0,math.max(10000,root.AssemblyMass*workspace.Gravity*1.5),0)
+            bodyVelocity.Velocity=Vector3.zero
+        end
+        local shift=Vector3.new(r.destino.X-root.Position.X,0,r.destino.Z-root.Position.Z)
+        local distance=shift.Magnitude
+        if distance>0.65 then
+            local speed=r.chave=="RaidDodge" and 500
+                or (r.chave=="RaidEnemy" and math.max(220,modo.Velocidade) or 160)
+            local step=math.min(distance,speed*math.min(dt,0.065))
+            char:TranslateBy(shift.Unit*step)
+            r.concluida=false
+        else
+            r.concluida=true
+        end
+        faseVoo=r.chave=="RaidDodge" and "Raid: esquiva lateral"
+            or (r.chave=="RaidEnemy" and "Raid: indo pelo lado do inimigo"
+                or "Raid: aguardando onda no mesmo nivel")
+        return
+    end
     if State.AutoSeaBeast and r.chave=="SeaBoss" then
         if FeatureState.raidHover then
             pcall(function() FeatureState.raidHover:Destroy() end)
@@ -2547,7 +2577,8 @@ local Raid = (function()
     local function approach(root,point,key,radius)
         if key=="RaidEnemy" then
             definirDestino(point,key)
-            return (root.Position-point).Magnitude<=radius
+            local flat=Vector3.new(root.Position.X-point.X,0,root.Position.Z-point.Z)
+            return flat.Magnitude<=radius
         end
         if (root.Position-point).Magnitude>radius then definirDestino(point,key);return false end
         if rota and rota.chave==key then liberarVoo() end
@@ -2613,7 +2644,7 @@ local Raid = (function()
         R.dodgeUntil=now+0.95
         local horizontal=Vector3.new(away.X,0,away.Z)
         if horizontal.Magnitude<.1 then horizontal=Vector3.new(1,0,0) end
-        R.dodgePos=root.Position+horizontal.Unit*(distance or 50)+Vector3.new(0,9,0)
+        R.dodgePos=root.Position+horizontal.Unit*(distance or 50)
         liberarVoo()
         return true
     end
@@ -2678,16 +2709,15 @@ local Raid = (function()
             definirDestino(R.dodgePos,"RaidDodge")
             return
         end
-        local forward=e.CFrame.LookVector
-        local lateral=Vector3.new(forward.X,0,forward.Z)
-        if lateral.Magnitude<.1 then lateral=Vector3.new(0,0,1) end
-        local point=e.Position+Vector3.new(0,4,0)-lateral.Unit*1.1
-        R.status=(commander and "Boss por cima: " or "Atacando por cima: ")..model.Name
+        local side=e.CFrame.RightVector
+        local lateral=Vector3.new(side.X,0,side.Z)
+        if lateral.Magnitude<.1 then lateral=Vector3.new(1,0,0) end
+        local point=e.Position+lateral.Unit*4
+        point=Vector3.new(point.X,root.Position.Y,point.Z)
+        R.status=(commander and "Boss pela lateral: " or "Atacando pela lateral: ")..model.Name
         local aligned=approach(root,point,"RaidEnemy",2.5)
-        if rota and rota.chave=="RaidEnemy" and (root.Position-point).Magnitude<30 then
-            rota.cruzeiro=math.max(root.Position.Y,point.Y)+2
-        end
-        if not aligned and (root.Position-point).Magnitude>9 then return end
+        local h=Vector3.new(root.Position.X-point.X,0,root.Position.Z-point.Z).Magnitude
+        if not aligned and h>8 then return end
         local tool=equiparArma()
         if not tool then R.status="Tool selecionada indisponível";return end
         local diff=e.Position-root.Position
@@ -2787,7 +2817,7 @@ local Raid = (function()
         if enemy then attack(enemy,root);return end
         R.enemy=nil
         R.status=(R.wave>=R.waves and "Aguardando boss" or ("Aguardando onda "..R.wave.."/"..R.waves))
-        approach(root,pos+Vector3.new(0,14,0),"RaidFort",55)
+        approach(root,Vector3.new(pos.X,root.Position.Y,pos.Z),"RaidFort",55)
     end
     function R.setAuto(v)
         State.AutoRaid=v==true
@@ -5453,6 +5483,7 @@ local function copiarDebug()
         "Raid ultimo ataque detectado: "..tostring(Raid.dodgeReason),
         "Raid esquivas: "..tostring(Raid.dodges),
         "Raid M1 tentados: "..tostring(Raid.m1Count),
+        "Raid movimento: lateral, sem subir na aproximação e esquiva",
         "Raid skills tentadas: "..tostring(Raid.skillCount),
         "Ilha escolhida: "..tostring(IslandTeleport.chosen),
         "Ilha TP: "..tostring(IslandTeleport.status),
