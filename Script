@@ -793,6 +793,23 @@ local function atualizarVoo(dt)
     prepararVoo(char,root,hum)
     if rota~=r then return end
     if os.clock()-ultimaColisao>0.5 then ultimaColisao=os.clock();atualizarColisao(char) end
+    if State.AutoSeaBeast and r.chave=="SeaBoss" then
+        if FeatureState.raidHover then
+            pcall(function() FeatureState.raidHover:Destroy() end)
+            FeatureState.raidHover=nil
+        end
+        if bodyVelocity then
+            bodyVelocity.MaxForce=Vector3.new(0,math.max(10000,root.AssemblyMass*workspace.Gravity*1.5),0)
+        end
+        local delta=r.destino-root.Position
+        local distance=delta.Magnitude
+        if distance>0.3 then
+            local step=math.min(distance,math.max(1800,modo.Velocidade)*math.min(dt,.1))
+            char:TranslateBy(delta.Unit*step)
+        end
+        faseVoo=distance<1.5 and "Sea: encostado na cabeça" or "Sea: aproximação rápida"
+        return
+    end
     if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss") or (State.AutoBoss and r.chave=="AutoBoss")) and (root.Position-r.destino).Magnitude<=30 then
         if not FeatureState.raidHover or FeatureState.raidHover.Parent~=root then
             if FeatureState.raidHover then pcall(function() FeatureState.raidHover:Destroy() end) end
@@ -2254,25 +2271,15 @@ local Sea = (function()
             end
             return
         end
-        local outward=head-bp.Position
-        local towardFront=Vector3.new(outward.X,0,outward.Z)
-        if towardFront.Magnitude<.5 then
-            local forward=bp.CFrame.LookVector
-            towardFront=Vector3.new(forward.X,0,forward.Z)
-        end
-        if towardFront.Magnitude<.1 then towardFront=Vector3.new(1,0,0) end
-        local advance=bp.AssemblyLinearVelocity*0.1
-        if advance.Magnitude>7 then advance=advance.Unit*7 end
-        local goal=head+towardFront.Unit*7+Vector3.new(0,2.5,0)+advance
+        local headVelocity=bp.AssemblyLinearVelocity*0.025
+        if headVelocity.Magnitude>1.5 then headVelocity=headVelocity.Unit*1.5 end
+        local goal=head+Vector3.new(0,0.45,0)+headVelocity
         local headDistance=(root.Position-head).Magnitude
-        S.status=(root.Position-goal).Magnitude>6 and ("Aproximando da cabeça: "..tostring(kind(boss))) or ("Atacando perto da cabeça: "..tostring(kind(boss)))
+        S.status=(root.Position-goal).Magnitude>1.6 and ("Grudando na cabeça: "..tostring(kind(boss))) or ("Encostado na cabeça: "..tostring(kind(boss)))
         definirDestino(goal,"SeaBoss")
-        if rota and rota.chave=="SeaBoss" and headDistance>30 and dist<380 then
-            rota.cruzeiro=math.max(root.Position.Y,goal.Y)+4
-        end
         local tool=equiparArma()
         if not tool then S.attack="Tool não encontrada";return end
-        if headDistance<13 and os.clock()-S.m1>.08 then
+        if headDistance<9 and os.clock()-S.m1>.035 then
             S.m1=os.clock()
             local face=Vector3.new(head.X-root.Position.X,0,head.Z-root.Position.Z)
             if face.Magnitude>0.15 then
@@ -2280,7 +2287,7 @@ local Sea = (function()
             end
             pcall(function() tool:Activate() end)
             S.attack="M1 na cabeça "..tool.Name
-        elseif headDistance>=13 then
+        elseif headDistance>=9 then
             S.attack="Aproximando para M1 ("..math.floor(headDistance).." studs)"
         end
         if headDistance<80 and os.clock()-S.skill>.95 then
@@ -2335,7 +2342,7 @@ local Sea = (function()
                     warn("[GR Hub Sea]",err)
                 end
             end
-            task.wait(State.AutoSeaBeast and .045 or State.SeaBeastESP and .4 or 1)
+            task.wait(State.AutoSeaBeast and .02 or State.SeaBeastESP and .4 or 1)
         end
         S.cleanup()
     end)
@@ -3888,7 +3895,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.2 - RETORNO ULTRA RÁPIDO",
+        "GR HUB V10.3 - SEA BEAST M1 TURBO",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -4103,6 +4110,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.2] Auto Boss: retorno ultra rápido 2500, 5000 ou 10000 studs/s")
+print("[GR Hub V10.3] Sea Beast encostado na cabeça, M1 0.035s e acompanhamento direto")
 
 end)()
