@@ -309,7 +309,10 @@ return function(C)
         if island=="Treasure Hunt" or island=="Wanted Posters" or island=="Beggar Rescue" then return false end
         if island=="Sky Hermit" then island="Solmar Island" end
         if norm(R.currentIsland)==norm(island) or
-            (island=="Circus Town" and R.currentIsland=="Circus") then return false end
+            (island=="Circus Town" and R.currentIsland=="Circus") or
+            (island=="Golden Dunes" and
+                (R.currentIsland=="Black Market" or
+                 R.currentIsland=="Interior of the Pyramid")) then return false end
         if C.IslandTeleport.traveling then
             R.status="Viajando para "..island
             return true
@@ -368,35 +371,111 @@ return function(C)
     end
     local function objectivePoint(quest,obj)
         local callable=obj.InterestPoint
+        local function resolve(where)
+            local point=position(where)
+            if point then return point,where end
+            if type(where)=="table" then
+                for _,value in pairs(where) do
+                    local p=position(value)
+                    if p then return p,value end
+                end
+            end
+            return nil
+        end
         if type(callable)=="function" then
             local ok,where=pcall(callable)
             if ok then
-                local point=position(where)
-                if point then return point end
-                if type(where)=="table" then
-                    for _,value in pairs(where) do
-                        point=position(value)
-                        if point then return point end
+                local p,inst=resolve(where)
+                if p then return p,inst end
+            end
+        else
+            local p,inst=resolve(callable)
+            if p then return p,inst end
+        end
+        local objId=tostring(obj.ObjectiveID or "")
+        local zoneData=modulePath(workspace,{"IgnoreList","Data","Quests","Zones"})
+        local folder=zoneData and zoneData:FindFirstChild(quest.island)
+        if folder then
+            local part=folder:FindFirstChild(objId,true)
+            if part then
+                local p,inst=resolve(part)
+                if p then return p,inst end
+            end
+            local attr=folder:GetAttribute(objId)
+            if typeof(attr)=="Vector3" then return attr,nil end
+        end
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        local area=areas and areas:FindFirstChild(quest.island)
+        local worldObject=area and area:FindFirstChild(objId,true)
+        if worldObject then
+            local p,inst=resolve(worldObject)
+            if p then return p,inst end
+        end
+        return nil,nil
+    end
+    local function doorForPoint(obj)
+        if typeof(obj)~="Instance" then return nil end
+        if obj.Name=="Entrance" and obj.Parent and
+            (obj.Parent.Name=="Enter" or obj.Parent.Name=="Leave") then
+            return obj.Parent,obj
+        end
+        if obj.Name:sub(1,5)=="Door_" then
+            local private=modulePath(workspace,{"IgnoreList","Int","PrivateAreas"})
+            if private then
+                local raw=obj.Name:sub(6)
+                for _,island in ipairs(private:GetChildren()) do
+                    for _,section in ipairs(island:GetChildren()) do
+                        for _,action in ipairs({"Enter","Leave"}) do
+                            if norm(island.Name.."_"..section.Name.."_"..action)==norm(raw) then
+                                local gate=section:FindFirstChild(action)
+                                return gate,gate and gate:FindFirstChild("Entrance")
+                            end
+                        end
                     end
                 end
             end
-        else
-            local point=position(callable)
-            if point then return point end
-        end
-        local zoneData=modulePath(workspace,{"IgnoreList","Data","Quests","Zones"})
-        local folder=zoneData and zoneData:FindFirstChild(quest.island)
-        local objId=obj.ObjectiveID
-        if folder and objId then
-            local part=folder:FindFirstChild(objId,true)
-            if part then
-                local point=position(part)
-                if point then return point end
-            end
-            local attr=folder:GetAttribute(objId)
-            if typeof(attr)=="Vector3" then return attr end
         end
         return nil
+    end
+    local function interactDoor(point,marker)
+        local door,part=doorForPoint(marker)
+        if not door then return false end
+        if not moveTo(point,3.1,"Passando pela porta "..door.Name) then
+            R.doorStatus="Aproximando da porta "..door.Name
+            return true
+        end
+        once("SQDoor:"..door:GetFullName(),1.2,function()
+            R.doorAttempts+=1
+            R.doorStatus="Ativando porta "..door.Name
+            local _,root,hum,valid=alive()
+            if not valid then return end
+            if part and part:IsA("BasePart") and type(firetouchinterest)=="function" then
+                pcall(function()
+                    firetouchinterest(root,part,0)
+                    firetouchinterest(root,part,1)
+                end)
+            end
+            local prompt=door:FindFirstChildWhichIsA("ProximityPrompt",true)
+            if prompt then
+                if type(fireproximityprompt)=="function" then
+                    pcall(fireproximityprompt,prompt)
+                else
+                    pcall(function()
+                        prompt:InputHoldBegin()
+                        task.delay(math.max(prompt.HoldDuration,.1),function()
+                            if prompt.Parent then prompt:InputHoldEnd() end
+                        end)
+                    end)
+                end
+            end
+            if C.privateClient and C.privateClient.Current then
+                server("PrivateAreas","EnterArea",C.privateClient.Current)
+            end
+            pcall(function() hum:MoveTo(point) end)
+        end)
+        R.status=R.doorStatus
+        return true
     end
     local function findTarget(name,root)
         if os.clock()-R.lastEnemyScan<.55 and R.lastEnemy
@@ -779,13 +858,31 @@ return function(C)
         end)
     end
     local passiveZone={Return_MerchantCamp_SQ=true}
-    local function interactMarker(pos,objId)
+    local function interactMarker(pos,objId,marker)
         local _,root,hum,ok=alive()
         if not ok then return false end
         local interacted=false
-        for _,node in ipairs(workspace:GetPartBoundsInRadius(pos,7)) do
-            local match=norm(node.Name)==norm(objId)
-                or (node.Position-pos).Magnitude<2.5
+        local points={}
+        if typeof(marker)=="Instance" then
+            if marker:IsA("BasePart") then table.insert(points,marker) end
+            if marker:IsA("Model") then
+                for _,v in ipairs(marker:GetDescendants()) do
+                    if v:IsA("BasePart") then table.insert(points,v) end
+                end
+            end
+        end
+        local okParts,nearby=pcall(workspace.GetPartBoundsInRadius,workspace,pos,5)
+        if okParts and type(nearby)=="table" then
+            for _,p in ipairs(nearby) do table.insert(points,p) end
+        end
+        local seen={}
+        for _,node in ipairs(points) do
+            if seen[node] then continue end
+            seen[node]=true
+            local match=(typeof(marker)=="Instance" and
+                    (node==marker or node:IsDescendantOf(marker)))
+                or norm(node.Name)==norm(objId)
+                or (node.Position-pos).Magnitude<2.0
             if match then
                 if type(firetouchinterest)=="function" then
                     local done=pcall(function()
@@ -814,6 +911,7 @@ return function(C)
             return
         end
         if not moveTo(pos,3.3,"Interagindo com "..id) then return end
+        R.desertStatus=(quest.island=="Golden Dunes" and id or "-")
         if passiveZone[id] then
             R.status="Zona alcançada; aguardando atualização: "..id
             return
@@ -1030,7 +1128,11 @@ return function(C)
         elseif targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
         elseif travelTo(quest) then return end
-        local pos=objectivePoint(quest,obj)
+        local pos,marker=objectivePoint(quest,obj)
+        if marker and id:sub(1,7)~="Defeat_" and
+            id:sub(1,5)~="Talk_" and interactDoor(pos,marker) then
+            return
+        end
         if id:sub(1,7)=="Defeat_" then
             restoreFishing()
             attack(quest,obj,pos)
@@ -1071,10 +1173,12 @@ return function(C)
             end
         elseif pos then
             restoreFishing()
-            if moveTo(pos,4,"Indo completar "..id) then
-                once("SQSpecial:"..id,1.25,function()
-                    local touched=interactMarker(pos,id)
-                    R.status=(touched and "Interagindo com " or "Aguardando gatilho em ")..id
+            if moveTo(pos,3.25,"Indo completar "..id) then
+                once("SQSpecial:"..id,.9,function()
+                    local touched=interactMarker(pos,id,marker)
+                    R.interactionAttempts+=1
+                    R.desertStatus=(quest.island=="Golden Dunes" and id or "-")
+                    R.status=(touched and "Tentando interação em " or "Aguardando ativação em ")..id
                 end)
             end
         else
