@@ -12,7 +12,10 @@ return function(C)
         currentIsland=nil,progress="-",lastEnemyName=nil,
         lastProgressKey=nil,lastProgressTime=0,lastNPC=nil,
         objectiveStage=0,objectiveIndex=0,
-        actionable=0,unsupported=0,selectedReason="-"
+        actionable=0,unsupported=0,selectedReason="-",
+        tomatoInputs=0,tomatoAttempts=0,tomatoNote=0,tomatoStatus="-",
+        tomatoMiniActive=false,tomatoSession=nil,tomatoConnection=nil,
+        npcRequests=0,npcStatus="-"
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
@@ -121,6 +124,11 @@ return function(C)
         end
         return a
     end
+    local interestPoints
+    pcall(function()
+        local source=modulePath(RS,{"Shared","MainModules","OtherUtils","InterestPoints"})
+        if source then interestPoints=require(source) end
+    end)
     local secondaryFolder=modulePath(RS,{"Shared","MainModules","ProgressUtils","QuestsInfo","Secondary"})
     local converseFolder=modulePath(RS,{"Elysium","Modules","Extensions","Converse","Converses"})
     local zoneFolder=modulePath(RS,{"Modules","Addons","QuestHandlers","QuestHandlers Client","Zones Client","Zones"})
@@ -205,7 +213,7 @@ return function(C)
     end
     local function npcPosition(actor,root)
         if type(actor)~="string" or actor=="" then return nil end
-        local points=C.mainModulo and C.mainModulo.InterestPoints
+        local points=interestPoints or (C.mainModulo and C.mainModulo.InterestPoints)
         if points and type(points.Get)=="function" then
             local ok,value=pcall(function() return points:Get("Character_"..actor) end)
             if ok then
@@ -270,7 +278,8 @@ return function(C)
         R.currentIsland=tostring(C.localAtual() or "")
         if island=="Treasure Hunt" or island=="Wanted Posters" or island=="Beggar Rescue" then return false end
         if island=="Sky Hermit" then island="Solmar Island" end
-        if norm(R.currentIsland)==norm(island) then return false end
+        if norm(R.currentIsland)==norm(island) or
+            (island=="Circus Town" and R.currentIsland=="Circus") then return false end
         if C.IslandTeleport.traveling then
             R.status="Viajando para "..island
             return true
@@ -432,10 +441,12 @@ return function(C)
         R.lastNPC=key
         if not moveTo(target,7,"Indo conversar: "..key) then return end
         local action=spec and spec[2] or "Talk"
-        once("SQTalk:"..id,5,function()
-            if C.interagirNPC and target then pcall(C.interagirNPC,CFrame.new(target),npcModel) end
-            server("Elysium_Converse",key,action)
-            R.status="Conversando com "..key.." ("..action..")"
+        once("SQTalk:"..id,1.25,function()
+            if server("Elysium_Converse",key,action) then
+                R.npcRequests+=1
+                R.npcStatus=key.." / "..action
+                R.status="Conversando com "..key.." ("..action..")"
+            end
         end)
     end
     local passiveZone={Return_MerchantCamp_SQ=true}
@@ -530,12 +541,12 @@ return function(C)
             if not pos then R.skipped[quest.name]=os.clock()+25 end
             return
         end
-        once("SQStart:"..quest.name,8,function()
-            if C.interagirNPC and pos then
-                pcall(C.interagirNPC,CFrame.new(pos),model)
+        once("SQStart:"..quest.name,1.8,function()
+            if server("Elysium_Converse",converse,action) then
+                R.npcRequests+=1
+                R.npcStatus=converse.." / "..action
+                R.status="Aceitando "..quest.name.." com "..actor
             end
-            server("Elysium_Converse",converse,action)
-            R.status="Aceitando "..quest.name.." com "..actor
         end)
     end
     local function restoreFishing()
