@@ -1396,6 +1396,107 @@ return function(C)
         hover.Position=goal
         return true
     end
+    local objectiveHandlers={}
+    objectiveHandlers.TempleRun=function(quest,obj,id,pos,marker)
+        restoreFishing()
+        if not phantomObjective(quest,obj) then
+            R.actionBlocked="TempleRun: objetivo não reconhecido "..id
+        end
+    end
+    objectiveHandlers.Combat=function(quest,obj,id,pos,marker)
+        restoreFishing()
+        attack(quest,obj,pos)
+    end
+    objectiveHandlers.Dialogue=function(quest,obj,id,pos,marker)
+        restoreFishing()
+        doTalk(obj,pos)
+    end
+    objectiveHandlers.Tomatoes=function(quest,obj,id,pos,marker)
+        restoreFishing()
+        local mini=tomatoManager and tomatoManager.Active
+        if (mini and mini.Name=="Dodge") or R.clownMiniRunning then
+            R.status="Bobo: desafio dos tomates em execução"
+        else
+            startTomatoShow(pos)
+        end
+    end
+    objectiveHandlers.Zone=function(quest,obj,id,pos,marker)
+        restoreFishing()
+        doZone(quest,obj,pos)
+    end
+    objectiveHandlers.Fishing=function(quest,obj,id,pos,marker)
+        if not pos then R.status="Ponto de pesca não carregado";return end
+        if not C.encontrarVaraPesca() then
+            R.status="Fishing Rod necessária para "..quest.name
+            return
+        end
+        if moveTo(pos,13,"Indo pescar para "..quest.name) then
+            stopRoute()
+            if not R.busyFishing then
+                R.previousFishing=C.State.AutoFishing
+                R.previousCast=C.State.AutoCastFishing
+                R.busyFishing=true
+            end
+            if holdFishingSpot(pos) then
+                if not C.State.AutoFishing then C.mudarAutoFishing(true) end
+                if not C.State.AutoCastFishing then C.mudarAutoCastFishing(true) end
+                R.status="Pescando para "..quest.name.." | "..R.progress
+            else
+                R.status="Aguardando posição segura para pesca"
+            end
+        end
+    end
+    objectiveHandlers.WorldInteraction=function(quest,obj,id,pos,marker)
+        restoreFishing()
+        if not pos then
+            R.actionBlocked="Sem coordenadas carregadas para "..id
+            R.status=R.actionBlocked
+            stopRoute()
+            return
+        end
+        if moveTo(pos,3.2,"Indo completar "..id) then
+            once("SQSpecial:"..id,.95,function()
+                R.interactionAttempts+=1
+                local touched=interactMarker(pos,id,marker)
+                R.desertStatus=quest.island=="Golden Dunes" and id or "-"
+                R.status=(touched and "Interação local em " or "Aguardando gatilho em ")..id
+            end)
+        end
+    end
+    local function objectiveKind(quest,id)
+        if quest.name=="The Phantom Tablet" then return "TempleRun" end
+        if id=="Dodge_Tomatoes_SQ" then return "Tomatoes" end
+        if id=="Catch_Fish" then return "Fishing" end
+        if id:sub(1,7)=="Defeat_" then return "Combat" end
+        if id:sub(1,5)=="Talk_" then return "Dialogue" end
+        if zoneModules[id] then return "Zone" end
+        return "WorldInteraction"
+    end
+    local function dispatchObjective(quest,obj,id)
+        local handler=objectiveKind(quest,id)
+        R.actionHandler=handler
+        R.actionBlocked="-"
+        local stalled=math.floor(os.clock()-(R.lastProgressTime or os.clock()))
+        if stalled>30 then
+            R.actionBlocked="Sem progresso por "..stalled.." s: "..id
+        end
+        if handler=="TempleRun" then
+            objectiveHandlers.TempleRun(quest,obj,id,nil,nil)
+            return
+        end
+        local pos,marker=objectivePoint(quest,obj)
+        if marker and handler~="Combat" and
+            interactDoor(pos,marker) then
+            R.actionHandler="WorldDoor"
+            return
+        end
+        local runner=objectiveHandlers[handler]
+        if runner then runner(quest,obj,id,pos,marker)
+        else
+            R.actionBlocked="Sem automação identificada para "..handler
+            R.status=R.actionBlocked
+        end
+    end
     local function step()
         if not R.enabled or not C.running() then return end
         if C.State.AutoBoss or C.State.AutoRaid or C.State.AutoSeaBeast
@@ -1488,68 +1589,7 @@ return function(C)
         elseif targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
         elseif travelTo(quest) then return end
-        if quest.name=="The Phantom Tablet" and phantomObjective(quest,obj) then
-            restoreFishing()
-            return
-        end
-        local pos,marker=objectivePoint(quest,obj)
-        if marker and id:sub(1,7)~="Defeat_" and
-            interactDoor(pos,marker) then
-            return
-        end
-        if id:sub(1,7)=="Defeat_" then
-            restoreFishing()
-            attack(quest,obj,pos)
-        elseif id=="Dodge_Tomatoes_SQ" then
-            restoreFishing()
-            local activeMinigame=tomatoManager and tomatoManager.Active
-            if activeMinigame and activeMinigame.Name=="Dodge" then
-                R.status="Bobo: completando automaticamente o desafio dos tomates"
-            else
-                startTomatoShow(pos)
-            end
-        elseif id:sub(1,5)=="Talk_" then
-            restoreFishing()
-            doTalk(obj,pos)
-        elseif zoneModules[id] then
-            restoreFishing()
-            doZone(quest,obj,pos)
-        elseif id=="Catch_Fish" then
-            if not pos then R.status="Local da pesca não carregado";return end
-            if not C.encontrarVaraPesca() then
-                R.status="Precisa de Fishing Rod para "..quest.name
-                return
-            end
-            if moveTo(pos,13,"Indo pescar para "..quest.name) then
-                stopRoute()
-                if not R.busyFishing then
-                    R.previousFishing=C.State.AutoFishing
-                    R.previousCast=C.State.AutoCastFishing
-                    R.busyFishing=true
-                end
-                if holdFishingSpot(pos) then
-                    if not C.State.AutoFishing then C.mudarAutoFishing(true) end
-                    if not C.State.AutoCastFishing then C.mudarAutoCastFishing(true) end
-                    R.status="Pescando parado no ar para "..quest.name.." | "..R.progress
-                else
-                    R.status="Aguardando flutuação segura na pesca"
-                end
-            end
-        elseif pos then
-            restoreFishing()
-            if moveTo(pos,3.25,"Indo completar "..id) then
-                once("SQSpecial:"..id,.9,function()
-                    local touched=interactMarker(pos,id,marker)
-                    R.interactionAttempts+=1
-                    R.desertStatus=(quest.island=="Golden Dunes" and id or "-")
-                    R.status=(touched and "Tentando interação em " or "Aguardando ativação em ")..id
-                end)
-            end
-        else
-            restoreFishing()
-            R.status="Objetivo especial sem posição carregada: "..id
-            stopRoute()
-        end
+        dispatchObjective(quest,obj,id)
     end
     function R.setAuto(v)
         R.enabled=v==true
