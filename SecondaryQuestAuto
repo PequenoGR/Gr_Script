@@ -190,7 +190,7 @@ return function(C)
         if type(quests)=="table" then
             for name in pairs(quests) do
                 if secondaryByName[name] and
-                    not name:match("^Vox ") then results[#results+1]=secondaryByName[name] end
+                    not name:match("^Vox ") and name~="The Sky Hermit" then results[#results+1]=secondaryByName[name] end
             end
         end
         table.sort(results,function(a,b)
@@ -609,7 +609,7 @@ return function(C)
             local best,score=nil,math.huge
             R.actionable=0
             for _,entry in ipairs(secondary) do
-                if entry.name~="Vox Sense Training" and entry.name~="Vox Armor Training"
+                if entry.name~="The Sky Hermit" and entry.name~="Vox Sense Training" and entry.name~="Vox Armor Training"
                     and entry.name~="Vox Sense Mastery" and entry.name~="Vox Armor Mastery"
                     and entry.category~="Treasure Hunt" and entry.category~="Beggar Rescue"
                     and entry.category~="Wanted Posters"
