@@ -1,0 +1,430 @@
+return function(C)
+    local R={
+        enabled=false,status="Desligado",stage="Parado",objective="-",
+        questActive=false,completed=false,level=0,ability=0,
+        requests=0,failures=0,steps=0,distance=nil,
+        lever=0,lastAction="-",lastRemote="-",lastRemoteTime=0,
+        target=nil,island="-",runActive=false,gameId=nil,
+        runTime=0,blocked="-",lastTravel=-100,lastSent={},
+        smoothSpeed=250
+    }
+    local RS=game:GetService("ReplicatedStorage")
+    local START=Vector3.new(-8313.673,-1205.046,12929.421)
+    local FINISH=Vector3.new(-8313.688,-1205.046,14298.82)
+    local function path(root,names)
+        local cur=root
+        for _,key in ipairs(names) do
+            if not cur then return nil end
+            cur=cur:FindFirstChild(key)
+        end
+        return cur
+    end
+    local function part(name)
+        local root=path(workspace,{"Map","Areas","Golden Dunes","SoruMiniGame","Quest"})
+        return root and root:FindFirstChild(name)
+    end
+    local function getCharacter()
+        local char,root,hum=C.character()
+        return char,root,hum,root~=nil and hum~=nil and hum.Health>0
+    end
+    local function pos(v)
+        if typeof(v)=="Vector3" then return v end
+        if typeof(v)=="CFrame" then return v.Position end
+        if typeof(v)=="Instance" then return C.posicaoDe(v) end
+        return nil
+    end
+    local function stampRemote(action,...)
+        local network=C.dadosModulo and C.dadosModulo.Network
+        if not network then
+            R.blocked="Network indisponível"
+            return false
+        end
+        local args={...}
+        local ok,err=pcall(function()
+            network:FireServer(action,table.unpack(args))
+        end)
+        R.lastRemote=tostring(action).." / "..tostring(args[1])
+        R.lastRemoteTime=os.clock()
+        if ok then R.requests+=1
+        else
+            R.failures+=1
+            R.blocked=tostring(err)
+        end
+        return ok
+    end
+    local function attempt(key,interval,action,...)
+        local now=os.clock()
+        if now-(R.lastSent[key] or -100)<interval then return false end
+        R.lastSent[key]=now
+        if stampRemote(action,...) then
+            R.lastAction=key
+            R.status="Solicitando "..key
+            return true
+        end
+        return false
+    end
+    local function stopMovement()
+        local route=C.getRoute()
+        if route and route.chave=="RushAuto" then C.liberarVoo() end
+    end
+    local function moveTo(destination,distance,label)
+        R.target=destination
+        local _,root,hum,valid=getCharacter()
+        if not valid or typeof(destination)~="Vector3" then
+            R.status="Aguardando localização: "..label
+            R.blocked=label
+            return false
+        end
+        local gap=(root.Position-destination).Magnitude
+        R.distance=math.floor(gap*10)/10
+        if gap>distance then
+            C.definirDestino(destination,"RushAuto")
+            R.status=label.." ("..math.floor(gap).." studs)"
+            return false
+        end
+        stopMovement()
+        return true
+    end
+    local function overPart(root,p)
+        if not root or not p or not p:IsA("BasePart") then return false end
+        local r=p.CFrame:PointToObjectSpace(root.Position)
+        local half=p.Size*.5
+        return math.abs(r.X)<=half.X+2
+           and math.abs(r.Z)<=half.Z+2
+           and r.Y>=-half.Y-2 and r.Y<=half.Y+12
+    end
+    local function reachTrigger(trigger,action)
+        if not trigger or not trigger:IsA("BasePart") then
+            R.status="Parte de interação não carregada: "..action
+            return false
+        end
+        local _,root,hum,valid=getCharacter()
+        if not valid then return false end
+        local dest=trigger.Position+Vector3.new(0,trigger.Size.Y*.5+2.5,0)
+        if not overPart(root,trigger) then
+            if not moveTo(dest,3.0,"Rush: indo para "..action) then return false end
+            if not overPart(root,trigger) then
+                R.status="Rush: ajustando posição em "..action
+                return false
+            end
+        end
+        return true
+    end
+    local function lever(index)
+        local folder=part("Levers")
+        if not folder then return nil end
+        for _,model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and tonumber(model:GetAttribute("Index"))==index then
+                return model:FindFirstChild("Cube.002",true)
+                    or model:FindFirstChild("Madeira",true) or model
+            end
+        end
+        return nil
+    end
+    local interest
+    pcall(function()
+        local module=path(RS,{"Shared","MainModules","OtherUtils","InterestPoints"})
+        if module then interest=require(module) end
+    end)
+    local function npc()
+        if interest and type(interest.Get)=="function" then
+            local ok,v=pcall(function() return interest:Get("Character_Mysterious Monk") end)
+            if ok and pos(v) then return pos(v) end
+        end
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local int=ignore and ignore:FindFirstChild("Int")
+        local play=workspace:FindFirstChild("Playability")
+        for _,root in ipairs({int or false,play or false}) do
+            if root then
+                for _,v in ipairs(root:GetDescendants()) do
+                    if (v:IsA("Model") or v:IsA("BasePart")) and
+                        (v.Name=="Mysterious Monk" or
+                        v:GetAttribute("OriginalName")=="Mysterious Monk") then
+                        local p=pos(v)
+                        if p then return p end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+    local function activeQuest(d)
+        local entries=d and d.Quests and d.Quests.Actives
+        local quest=entries and entries["The Phantom Tablet"]
+        return type(quest)=="table" and quest or nil
+    end
+    local function nextStage(quest,d)
+        local info=C.mainModulo and C.mainModulo.QuestsInfo
+        info=info and info["The Phantom Tablet"]
+        if not info then return 0,nil end
+        local utils=C.mainModulo.QuestsUtils
+        if utils and type(utils.GetCurrentSubQuestIndex)=="function" then
+            local ok,stage=pcall(utils.GetCurrentSubQuestIndex,quest,info)
+            if ok and type(stage)=="number" then return stage,info end
+        end
+        for index,step in ipairs(info.SubQuests or {}) do
+            local values=quest[index] or {}
+            for j,obj in ipairs(step.Objectives or {}) do
+                if (tonumber(values[j]) or 0)<(tonumber(obj.Goal) or 1) then
+                    return index,info
+                end
+            end
+        end
+        return 0,info
+    end
+    local miniManager
+    pcall(function()
+        local module=path(RS,{"Modules","Addons","MinigamesSystem"})
+        if module then
+            local lib=require(module)
+            miniManager=lib and lib.IsClient
+        end
+    end)
+    local function session()
+        local active=miniManager and miniManager.Active
+        if active and active.Name=="TempleRun" then
+            R.runActive=true
+            R.gameId=active.Id or active.id
+            return active
+        end
+        R.runActive=false
+        R.gameId=nil
+        return nil
+    end
+    local function travel()
+        R.island=tostring(C.localAtual() or "")
+        if R.island=="Golden Dunes" or R.island=="Black Market"
+            or R.island=="Interior of the Pyramid" then return false end
+        local areas=path(workspace,{"Map","Areas"})
+        local area=areas and areas:FindFirstChild("Golden Dunes")
+        if not area then
+            R.status="Golden Dunes não carregada"
+            return true
+        end
+        local _,root,hum,valid=getCharacter()
+        if not valid then return true end
+        local center=area:GetAttribute("MapCenter")
+        if typeof(center)=="Vector3" and (root.Position-center).Magnitude<500 then return false end
+        if C.IslandTeleport.traveling then
+            R.status="Viajando para Golden Dunes"
+            return true
+        end
+        if os.clock()-R.lastTravel>28 then
+            R.lastTravel=os.clock()
+            C.IslandTeleport.choose("Golden Dunes")
+            C.IslandTeleport.go()
+        end
+        R.status="Rush: viajando para Golden Dunes"
+        return true
+    end
+    local function runCorridor(dt)
+        local char,root,hum,valid=getCharacter()
+        if not valid then return end
+        local remaining=(root.Position-FINISH).Magnitude
+        R.distance=math.floor(remaining)
+        if remaining<=18 then
+            R.stage="Final da corrida"
+            local active=session()
+            if active and R.gameId then
+                attempt("TempleRun End",2.5,
+                    "MinigamesService","TempleRun",{GameAction="End",id=R.gameId})
+            else
+                R.status="Rush: fim do corredor; aguardando progresso do minigame"
+            end
+            return
+        end
+        if math.abs(root.Position.Y-START.Y)>35 then
+            R.status="Rush: aguardando personagem entrar no corredor"
+            return
+        end
+        stopMovement()
+        local horizontal=Vector3.new(FINISH.X-root.Position.X,0,
+            FINISH.Z-root.Position.Z)
+        if horizontal.Magnitude<=.01 then return end
+        local pace=math.min(horizontal.Magnitude,
+            math.min(tonumber(R.smoothSpeed) or 250,350)*math.min(dt,.085))
+        local nextPosition=root.Position+horizontal.Unit*pace
+        nextPosition=Vector3.new(nextPosition.X,START.Y+3.25,nextPosition.Z)
+        local ok=pcall(function()
+            char:PivotTo(CFrame.new(nextPosition)*root.CFrame.Rotation)
+            root.AssemblyLinearVelocity=Vector3.zero
+        end)
+        if ok then
+            R.steps+=1
+            R.status="Rush: percorrendo corredor ("..math.floor(remaining).." studs)"
+        else
+            R.failures+=1
+            R.blocked="Erro de movimento no corredor"
+        end
+    end
+    local lastAt=os.clock()
+    local function step()
+        if not R.enabled or not C.running() then return end
+        if C.State.AutoSecondary or C.State.AutoHaki or C.State.AutoBoss
+            or C.State.AutoRaid or C.State.AutoSeaBeast
+            or C.State.AutoFarmQuest or C.State.AutoFarmFruit
+            or C.State.AutoSkyHermit then
+            R.status="Auto Rush pausado: outra automação ativa"
+            stopMovement()
+            return
+        end
+        local d=C.lerDados()
+        local _,root,hum,valid=getCharacter()
+        if not valid or not d then R.status="Aguardando dados/personagem";return end
+        R.level=C.lerNivel(d)
+        R.ability=tonumber(d.Abilitys and d.Abilitys.Soru) or 0
+        if R.ability>0 then
+            R.completed=true
+            R.stage="Concluído"
+            R.status="Rush / Soru já desbloqueado!"
+            stopMovement()
+            return
+        end
+        if R.level<85 then
+            R.stage="Requisito"
+            R.status="Rush / Soru requer nível 85"
+            return
+        end
+        if travel() then return end
+        local quest=activeQuest(d)
+        R.questActive=quest~=nil
+        if not quest then
+            R.stage="Aceitar The Phantom Tablet"
+            R.objective="Accept"
+            local p=npc()
+            if not moveTo(p,6,"Indo ao Mysterious Monk") then return end
+            attempt("MysteriousMonk Accept",2,
+                "Elysium_Converse","MysteriousMonk","Accept")
+            return
+        end
+        local stage,info=nextStage(quest,d)
+        R.stage=tostring(stage).."/6"
+        local stepInfo=info and info.SubQuests and info.SubQuests[stage]
+        local objective
+        local activeValues=quest[stage] or {}
+        if stepInfo then
+            for i,obj in ipairs(stepInfo.Objectives or {}) do
+                if (tonumber(activeValues[i]) or 0)<(tonumber(obj.Goal) or 1) then
+                    objective=obj;break
+                end
+            end
+        end
+        R.objective=objective and objective.ObjectiveID or tostring(stage)
+        local now=os.clock()
+        local dt=math.clamp(now-lastAt,.016,.11)
+        lastAt=now
+        if stage==1 then
+            local index
+            for i=1,3 do if (tonumber((quest[1] or {})[i]) or 0)<1 then index=i;break end end
+            if not index then return end
+            R.lever=index
+            local handle=lever(index)
+            local position=pos(handle)
+            if not moveTo(position,6,"Rush: alavanca "..index.."/3") then return end
+            attempt("TempleRun Pull "..index,2.0,
+                "MinigamesService","TempleRun",{GameAction="Pull",Index=index})
+        elseif stage==2 then
+            local p=npc()
+            if not moveTo(p,6,"Rush: falando com Mysterious Monk") then return end
+            attempt("MysteriousMonk Talk",2.1,
+                "Elysium_Converse","MysteriousMonk","Talk")
+        elseif stage==3 then
+            local door=part("TeleportEntryPart")
+            if not door or not door:IsA("BasePart") then
+                R.status="Rush: entrada das ruínas indisponível";return
+            end
+            if not reachTrigger(door,"Enter") then return end
+            attempt("TempleRun Enter",2.1,
+                "MinigamesService","TempleRun",{GameAction="Enter"})
+        elseif stage==4 then
+            local tablet=part("SoruTabulet")
+            if not moveTo(pos(tablet),5.5,"Rush: indo pegar a tábua") then return end
+            attempt("TempleRun Take",2.7,
+                "MinigamesService","TempleRun",{GameAction="Take"})
+        elseif stage==5 then
+            local active=session()
+            if active then
+                R.runTime+=dt
+                runCorridor(dt)
+                return
+            end
+            local marker=part("ActivateMinigamePart")
+            if not marker or not marker:IsA("BasePart") then
+                R.status="Rush: ativador da corrida não carregado";return
+            end
+            local startPoint=Vector3.new(START.X,START.Y+3.2,START.Z)
+            if math.abs(root.Position.Y-START.Y)>35 then
+                R.status="Rush: aguardando entrar no interior após Take"
+                return
+            end
+            local projection=Vector3.new(root.Position.X,0,root.Position.Z)
+            local destination=Vector3.new(marker.Position.X,0,marker.Position.Z)
+            if (projection-destination).Magnitude>6 then
+                if not moveTo(Vector3.new(marker.Position.X,START.Y+3.2,
+                    marker.Position.Z),7,"Rush: indo ao início da corrida") then return end
+            end
+            attempt("TempleRun Activate",2.6,
+                "MinigamesService","TempleRun",{GameAction="Activate"})
+            R.status="Rush: ativando corrida / aguardando minigame"
+        elseif stage==6 then
+            local active=session()
+            if active then
+                runCorridor(dt)
+                return
+            end
+            local exit=part("TeleportBackPart")
+            if not exit or not exit:IsA("BasePart") then
+                R.status="Rush: saída não carregada";return
+            end
+            if not reachTrigger(exit,"Leave") then return end
+            attempt("TempleRun Leave",2.5,
+                "MinigamesService","TempleRun",{GameAction="Leave"})
+        else
+            R.status="Rush: aguardando avanço ou confirmação de Soru"
+            stopMovement()
+        end
+    end
+    function R.setAuto(value)
+        R.enabled=value==true
+        C.State.AutoRush=R.enabled
+        if R.enabled then
+            if C.SecondaryQuestAuto and C.SecondaryQuestAuto.enabled then
+                C.SecondaryQuestAuto.setAuto(false)
+            end
+            if C.SkyHermitAuto and C.SkyHermitAuto.enabled then
+                C.SkyHermitAuto.setAuto(false)
+            end
+            if C.State.AutoHaki and C.VoxHaki then C.VoxHaki.setFullAuto(false) end
+            if C.State.AutoBoss and C.BossFarm then C.BossFarm.setAuto(false) end
+            if C.State.AutoRaid and C.Raid then C.Raid.setAuto(false) end
+            if C.State.AutoSeaBeast and C.Sea then C.Sea.setAuto(false) end
+            if C.State.AutoFarmQuest then C.definirFarm(false) end
+            if C.State.AutoFarmFruit then C.definirFarmFruta(false) end
+            R.status="Auto Rush ativado"
+            R.stage="Preparando"
+            R.lastSent={}
+            R.blocked="-"
+        else
+            stopMovement()
+            R.status="Desligado"
+            R.stage="Parado"
+        end
+    end
+    function R.stop() R.setAuto(false) end
+    task.spawn(function()
+        while C.running() do
+            if R.enabled then
+                local ok,err=pcall(step)
+                if not ok then
+                    R.failures+=1
+                    R.blocked=tostring(err)
+                    R.status="Erro Auto Rush: "..tostring(err)
+                    if R.failures%7==1 then warn("[GR Auto Rush]",err) end
+                end
+            end
+            task.wait(R.enabled and .055 or 1.2)
+        end
+        R.stop()
+    end)
+    return R
+end
