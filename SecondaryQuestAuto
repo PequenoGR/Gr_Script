@@ -20,7 +20,10 @@ return function(C)
         clownDoorStatus="-",clownDistance=nil,
         clownMiniSeen=0,clownMiniRunning=false,clownAction="none",
         clownLastInputMethod="-",clownDoorAttempts=0,clownGuiFound=false,
-        clownStartUntil=0,clownInputWindow="-"
+        clownStartUntil=0,clownInputWindow="-",
+        interactionTarget="-",interactionMode="-",interactionDistance=nil,
+        interactionAttempts=0,zoneAttempts=0,zoneStatus="-",desertStatus="-",
+        doorAttempts=0,doorStatus="-",npcAlias="-"
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
@@ -111,6 +114,7 @@ return function(C)
         local ok=pcall(function()
             C.dadosModulo.Network:FireServer(action,table.unpack(args))
         end)
+        R.interactionMode=tostring(action)..(args[1] and (" / "..tostring(args[1])) or "")
         if ok then R.requests+=1 else R.failures+=1 end
         return ok
     end
@@ -223,7 +227,7 @@ return function(C)
             local ok,value=pcall(function() return points:Get("Character_"..actor) end)
             if ok then
                 local pos=position(value)
-                if pos then return pos end
+                if pos then return pos,value end
             end
         end
         local ignore=workspace:FindFirstChild("IgnoreList")
@@ -247,31 +251,52 @@ return function(C)
         end
         return found,model
     end
-    local function converseInfo(id,root)
+    local function converseInfo(id,root,preferredActor)
         local module=converseFolder and converseFolder:FindFirstChild(id)
         if not module then return nil end
         local ok,info=pcall(require,module)
         if not ok or type(info)~="table" then return nil end
-        local actor=info.Actors and info.Actors[1]
-        local pos,model
-        if actor then pos,model=npcPosition(actor,root) end
-        return pos,model,actor
+        local actors=info.Actors or {}
+        local chosen,model,actor
+        if type(preferredActor)=="string" then
+            chosen,model=npcPosition(preferredActor,root)
+            actor=chosen and preferredActor or nil
+        end
+        if not chosen then
+            for _,candidate in ipairs(actors) do
+                local pos,obj=npcPosition(candidate,root)
+                if pos then
+                    chosen,model,actor=pos,obj,candidate
+                    break
+                end
+            end
+        end
+        if not chosen and type(preferredActor)=="string" then
+            chosen,model=npcPosition(preferredActor,root)
+            actor=preferredActor
+        end
+        R.npcAlias=tostring(actor or preferredActor or actors[1] or id)
+        return chosen,model,actor
     end
     local function stopRoute()
         if C.getRoute() and C.getRoute().chave=="SecondaryQuest" then C.liberarVoo() end
     end
     local function moveTo(pos,near,label)
+        R.interactionTarget=tostring(label)
         if typeof(pos)~="Vector3" then
             stopRoute()
-            R.status="Sem localização carregada: "..label
+            R.status="Posição não carregada: "..label
+            R.interactionDistance=nil
             return false
         end
         local _,root,hum,ok=alive()
         if not ok then return false end
-        local dest=pos+Vector3.new(0,2.5,0)
-        local dist=(root.Position-dest).Magnitude
-        if dist>near then
-            C.definirDestino(dest,"SecondaryQuest")
+        local dist=(root.Position-pos).Magnitude
+        R.interactionDistance=math.floor(dist*10)/10
+        local arrival=math.clamp(tonumber(near) or 3.5,2.4,7)
+        local yOffset=dist>15 and 1.8 or 0.35
+        if dist>arrival then
+            C.definirDestino(pos+Vector3.new(0,yOffset,0),"SecondaryQuest")
             R.status=label.." ("..math.floor(dist).." studs)"
             return false
         end
@@ -737,16 +762,19 @@ return function(C)
         if key=="TomatoClown" and leaveCircusIfNeeded() then return end
         local _,root,hum,ok=alive()
         if not ok then return end
-        local npcPos,npcModel=converseInfo(key,root)
-        local target=(key=="TomatoClown" and npcPos) or npcPos or pos
+        local preferred=(key=="ThirstyMerchant" and id=="Talk_ThirstyMerchantWater_SQ")
+            and "Thirsty Merchant Ambush" or nil
+        local npcPos,npcModel=converseInfo(key,root,preferred)
+        local target=npcPos or pos
         R.lastNPC=key
-        if not moveTo(target,7,"Indo conversar: "..key) then return end
+        if not moveTo(target,3.8,"Indo conversar: "..key) then return end
         local action=spec and spec[2] or "Talk"
-        once("SQTalk:"..id,1.25,function()
+        once("SQTalk:"..id,1.15,function()
+            R.interactionAttempts+=1
             if server("Elysium_Converse",key,action) then
                 R.npcRequests+=1
                 R.npcStatus=key.." / "..action
-                R.status="Conversando com "..key.." ("..action..")"
+                R.status="Interagindo com "..R.npcAlias.." ("..action..")"
             end
         end)
     end
@@ -785,23 +813,34 @@ return function(C)
             R.status="Ação especial pendente: "..id
             return
         end
-        if not moveTo(pos,5,"Interagindo com "..id) then return end
+        if not moveTo(pos,3.3,"Interagindo com "..id) then return end
         if passiveZone[id] then
             R.status="Zona alcançada; aguardando atualização: "..id
             return
         end
-        once("SQZone:"..id,4.5,function()
+        once("SQZone:"..id,3.0,function()
+            local d=data()
+            local q=active(d)
+            local current=q and nextObjective(q,d)
+            if not current or current.ObjectiveID~=id then return end
+            R.zoneAttempts+=1
+            R.zoneStatus="Start "..id
             if server("QuestZones",id,"Start") then
-                task.delay(1.65,function()
+                local zoneDelay=id=="Fill_WaterBucket_SQ" and 1.3 or
+                    (id:find("^Read_LostInscription") and 1.48 or 1.35)
+                task.delay(zoneDelay,function()
                     if not R.enabled or not C.running() then return end
-                    local d=data()
-                    local q=active(d)
-                    local pending=q and nextObjective(q,d)
-                    if pending and pending.ObjectiveID==id then
+                    local currentData=data()
+                    local activeQuest=active(currentData)
+                    local pending=activeQuest and nextObjective(activeQuest,currentData)
+                    local _,root,hum,aliveNow=alive()
+                    if pending and pending.ObjectiveID==id and aliveNow and
+                        typeof(pos)=="Vector3" and (root.Position-pos).Magnitude<=8 then
+                        R.zoneStatus="Use "..id
                         server("QuestZones",id,"Use")
                     end
                 end)
-                R.status="Coletando / acionando "..id
+                R.status="Executando objetivo "..id
             end
         end)
     end
@@ -841,11 +880,12 @@ return function(C)
         local pos,model=converseInfo(converse,root)
         if not pos then pos,model=npcPosition(actor,root) end
         R.lastNPC=actor
-        if not moveTo(pos,7,"Indo ao NPC "..actor) then
+        if not moveTo(pos,3.9,"Indo ao NPC "..actor) then
             if not pos then R.skipped[quest.name]=os.clock()+25 end
             return
         end
-        once("SQStart:"..quest.name,1.8,function()
+        once("SQStart:"..quest.name,1.1,function()
+            R.interactionAttempts+=1
             if server("Elysium_Converse",converse,action) then
                 R.npcRequests+=1
                 R.npcStatus=converse.." / "..action
