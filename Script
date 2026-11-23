@@ -4008,7 +4008,9 @@ local VoxHaki = (function()
     local V={
         autoArmor=false,autoSense=false,autoUnlock=false,autoMastery=false,
         autoTrack=false,status="Desligado",lastRequest=0,lastToggle={},
-        autoMini=false,autoMiniStart=false,miniStatus="Desligado",
+        autoMini=false,autoMiniStart=false,autoMiniFishing=false,
+        managedFish=false,savedFishing=false,savedCastFishing=false,fishStatus="-",
+        miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
         miniLastStart=0,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
         lastTracked=nil,requests=0,lastError=0
@@ -4483,6 +4485,42 @@ local VoxHaki = (function()
             end
         end
     end
+    local function restoreHakiFishing()
+        if V.managedFish then
+            V.managedFish=false
+            if State.AutoFishing~=V.savedFishing then mudarAutoFishing(V.savedFishing) end
+            if State.AutoCastFishing~=V.savedCastFishing then mudarAutoCastFishing(V.savedCastFishing) end
+        end
+    end
+    local function updateHakiFishing()
+        if not V.autoMiniFishing then
+            restoreHakiFishing()
+            return
+        end
+        local quest=activeQuest(lerDados())
+        if quest~="Vox Sense Training" or not objectiveActive("Catch_Fish") then
+            restoreHakiFishing()
+            V.fishStatus="Aguardando etapa de 10 peixes do Vox Sense"
+            return
+        end
+        if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
+            State.AutoFarmQuest or FeatureState.islandTraveling then
+            V.fishStatus="Pesca do Haki pausada por outro farm"
+            return
+        end
+        if not V.managedFish then
+            V.savedFishing=State.AutoFishing
+            V.savedCastFishing=State.AutoCastFishing
+            V.managedFish=true
+        end
+        if not State.AutoFishing then mudarAutoFishing(true) end
+        if not State.AutoCastFishing then mudarAutoCastFishing(true) end
+        V.fishStatus="Fishing automático: pescando 10 peixes do Vox Sense"
+    end
+    function V.setMiniFishing(v)
+        V.autoMiniFishing=(v==true)
+        if not V.autoMiniFishing then restoreHakiFishing() end
+    end
     local function tryStartHakiMini()
         if not V.autoMini or not V.autoMiniStart or
             os.clock()-V.miniLastStart<10 then return end
@@ -4551,6 +4589,7 @@ local VoxHaki = (function()
     end
     function V.showMini()
         notify("Auto minigame: "..tostring(V.autoMini)..
+            " | Pesca Vox: "..tostring(V.autoMiniFishing)..
             " | Início perto do treino: "..tostring(V.autoMiniStart)..
             " | Comandos enviados: "..V.miniInputs..
             " | Inícios pedidos: "..V.miniStarts..
@@ -4563,6 +4602,7 @@ local VoxHaki = (function()
         local c=V.miniConnection
         V.miniConnection=nil
         if c then pcall(function() c:Disconnect() end) end
+        restoreHakiFishing()
         if env.GRHubVoxMinigameStop==stopMini then env.GRHubVoxMinigameStop=nil end
     end
     env.GRHubVoxMinigameStop=stopMini
@@ -4595,13 +4635,14 @@ local VoxHaki = (function()
                 if V.autoArmor then activate("Busoshoku") end
                 if V.autoSense then activate("Kenbushoku") end
                 tryRequest()
+                updateHakiFishing()
             end)
             if not ok and os.clock()-V.lastError>5 then
                 V.lastError=os.clock()
                 V.status="Erro Vox: "..tostring(err)
                 warn("[GR Hub Vox]",err)
             end
-            task.wait((V.autoArmor or V.autoSense or V.autoUnlock or V.autoMastery) and .75 or 2)
+            task.wait((V.autoArmor or V.autoSense or V.autoUnlock or V.autoMastery or V.autoMiniFishing) and .75 or 2)
         end
     end)
     return V
@@ -4635,6 +4676,8 @@ local function copiarDebug()
         "Vox pedidos enviados: "..tostring(VoxHaki.requests),
         "Vox MiniGames auto: "..tostring(VoxHaki.autoMini),
         "Vox MiniGames iniciar: "..tostring(VoxHaki.autoMiniStart),
+        "Vox MiniGames pesca: "..tostring(VoxHaki.autoMiniFishing),
+        "Vox MiniGames pesca status: "..tostring(VoxHaki.fishStatus),
         "Vox MiniGames entradas: "..tostring(VoxHaki.miniInputs),
         "Vox MiniGames status: "..tostring(VoxHaki.miniStatus),
         "Boss risco atual: "..tostring(BossFarm.riskScore),
@@ -4833,6 +4876,7 @@ Hub.CreateToggle(hakiPanel,"Auto iniciar treino Haki (usa Gold)",VoxHaki.setUnlo
 Hub.CreateToggle(hakiPanel,"Auto aceitar evoluções Vox (usa Gold)",VoxHaki.setMastery)
 Hub.CreateToggle(hakiPanel,"Auto MiniGames Haki (Dodge / StoneBreak / Spar)",VoxHaki.setMini)
 Hub.CreateToggle(hakiPanel,"Auto iniciar minigame perto do treino",VoxHaki.setMiniStart)
+Hub.CreateToggle(hakiPanel,"Auto Fishing para 10 peixes Vox Sense",VoxHaki.setMiniFishing)
 Hub.CreateButton(hakiPanel,"Status dos MiniGames Haki",VoxHaki.showMini,"gamepad-2")
 Hub.CreateToggle(hakiPanel,"Auto rastrear missão Vox",VoxHaki.setTrack)
 Hub.CreateButton(hakiPanel,"Ir ao Askard (Skull Island)",VoxHaki.goTrainer,"map-pin")
