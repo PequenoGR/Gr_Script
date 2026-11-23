@@ -4801,7 +4801,7 @@ local VoxHaki = (function()
                 "indo ao ponto de pesca") then
                 V.status="Auto Haki: pescando para Vox Sense"
             end
-        elseif objective:sub(1,15)=="Break_Stone_HK" or objective=="Train_VoxArmor_VX" then
+        elseif objective:find("^Break_Stone_HK_") or objective=="Train_VoxArmor_VX" then
             local n=tonumber(objective:match("_(%d+)$"))
             if not n then
                 local _,lv=levels(data)
