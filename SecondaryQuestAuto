@@ -37,6 +37,15 @@ return function(C)
         ["The Lost Explorer"]={"LostExplorer","Lost Explorer","Guide"},
         ["The Path of Flames"]={"FlameMaster","Flame Master","Accept"}
     }
+    local TALK_ISLAND={
+        Talk_DunesIceBuyer_SQ="Golden Dunes",
+        Talk_SolmarDockClerk_SQ="Solmar Island",
+        Talk_SkyPalaceGuardian_SQ="Windhaven",
+        Talk_CircusJuggler_SQ="Circus Town",
+        Talk_LostExplorer_SQ="Skull Island",
+        Talk_ShipCaptain_SQ="Solmar Island",
+        Talk_PrisonerSister_SQ="Prison"
+    }
     local TALK={
         Talk_MourningWoman_SQ={"MourningWoman","Deliver"},
         Talk_WitchPotion_SQ={"Witch","DeliverMoonflower"},
@@ -370,6 +379,7 @@ return function(C)
         if not moveTo(target,7,"Indo conversar: "..key) then return end
         local action=spec and spec[2] or "Talk"
         once("SQTalk:"..id,5,function()
+            if C.interagirNPC then pcall(C.interagirNPC,CFrame.new(target)) end
             server("Elysium_Converse",key,action)
             R.status="Conversando com "..key.." ("..action..")"
         end)
@@ -429,6 +439,9 @@ return function(C)
             return
         end
         once("SQStart:"..quest.name,8,function()
+            if C.interagirNPC then
+                pcall(C.interagirNPC,CFrame.new(pos))
+            end
             server("Elysium_Converse",converse,action)
             R.status="Aceitando "..quest.name.." com "..actor
         end)
@@ -508,7 +521,10 @@ return function(C)
         local id=tostring(obj.ObjectiveID or "")
         R.objective=id
         R.progress=tostring(count).."/"..tostring(obj.Goal or "?")
-        if travelTo(quest) then return end
+        local targetIsland=TALK_ISLAND[id] or quest.island
+        if targetIsland~=quest.island then
+            if travelTo({island=targetIsland}) then return end
+        elseif travelTo(quest) then return end
         local pos=objectivePoint(quest,obj)
         if id:sub(1,7)=="Defeat_" then
             restoreFishing()
