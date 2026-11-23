@@ -4741,20 +4741,83 @@ local VoxHaki = (function()
         end
         return nil
     end
+    local hakiLastBroadScan=-100
+    local hakiExtraTargets={}
+    local function findHakiEnemy(name,root)
+        reindexar()
+        local wanted=normalizar(name)
+        local closest,dist,found=nil,math.huge,0
+        local used={}
+        local function matchEnemy(e)
+            local values={
+                e.Name,e:GetAttribute("AlternativeName"),
+                e:GetAttribute("EnemyName"),e:GetAttribute("OriginalName"),
+                e:GetAttribute("MobName"),e:GetAttribute("DisplayName")
+            }
+            for _,value in pairs(values) do
+                local normalized=normalizar(value)
+                if normalized==wanted or normalized==wanted.."history"
+                    or normalized=="history"..wanted then
+                    return true
+                end
+            end
+            return false
+        end
+        local function include(e)
+            if not e or used[e] or not e:IsA("Model") then return end
+            used[e]=true
+            if matchEnemy(e) and valido(e) then
+                local er=rootInimigo(e)
+                if er then
+                    found+=1
+                    local distance=(root.Position-er.Position).Magnitude
+                    if distance<dist then closest=e;dist=distance end
+                end
+            end
+        end
+        for _,e in ipairs(indexInimigos) do include(e) end
+        if os.clock()-hakiLastBroadScan>2 then
+            hakiLastBroadScan=os.clock()
+            table.clear(hakiExtraTargets)
+            local play=workspace:FindFirstChild("Playability")
+            local ignore=workspace:FindFirstChild("IgnoreList")
+            local int=ignore and ignore:FindFirstChild("Int")
+            for _,scope in ipairs({play or false,int or false,ignore or false}) do
+                if scope then
+                    for _,inst in ipairs(scope:GetDescendants()) do
+                        if inst:IsA("Model") and matchEnemy(inst) then
+                            table.insert(hakiExtraTargets,inst)
+                        end
+                    end
+                end
+            end
+        end
+        for _,e in ipairs(hakiExtraTargets) do include(e) end
+        V.hakiEnemyCount=found
+        V.hakiEnemyTarget=closest and closest.Name or nil
+        V.hakiEnemyDistance=closest and math.floor(dist) or nil
+        return closest
+    end
     local function autoFight(name,point)
         local _,root,hum=character()
         if not root or not hum or hum.Health<=0 then return end
-        local enemy=encontrarInimigo(name,root)
+        local enemy=findHakiEnemy(name,root)
         local enemyRoot=enemy and rootInimigo(enemy)
         if not enemyRoot or not valido(enemy) then
-            moveHakiTo(point,22,"procurando "..name)
+            local spawn=point or pontoGrupoInimigo(name,root)
+            if typeof(spawn)=="Vector3" then
+                moveHakiTo(spawn,6,"procurando "..name.." na área de spawn")
+            else
+                stopHakiRoute()
+                V.status="Auto Haki: sem "..name.." visível e sem marcador de spawn"
+            end
             return
         end
-        if not moveHakiTo(enemyRoot.Position+Vector3.new(0,4.5,0),11,
-            "combatendo "..name) then return end
+        local contact=enemyRoot.Position+Vector3.new(0,3.2,0)
+        if not moveHakiTo(contact,7,"aproximando do "..name) then return end
         local tool=styleTool()
         if not tool then V.status="Auto Haki: precisa de um Fighting Style equipado";return end
-        autoAction("HakiM1",.16,function()
+        autoAction("HakiM1",.13,function()
             local flat=Vector3.new(enemyRoot.Position.X-root.Position.X,0,
                 enemyRoot.Position.Z-root.Position.Z)
             if flat.Magnitude>.1 then
@@ -4762,7 +4825,8 @@ local VoxHaki = (function()
             end
             tool:Activate()
             if CombatEvent then CombatEvent:FireServer("Activate",tool.Name) end
-            V.status="Auto Haki: atacando "..name
+            V.status="Auto Haki: derrotando "..name.." ("..
+                tostring(V.objectiveProgress or "?").."/"..tostring(V.objectiveGoal or "?")..")"
         end)
     end
     local function currentObjective(quest,data)
@@ -4811,9 +4875,23 @@ local VoxHaki = (function()
     end
     local lastSkullTrip=-100
     local function checkSkullTravel(root)
+        -- A localização real do servidor tem prioridade sobre a distância ao MapCenter.
+        -- Skull Island é extensa: estar a mais de 750 studs do centro não significa
+        -- estar fora da ilha.
+        local location=tostring(localAtual() or "")
+        V.currentHakiLocation=location
+        if normalizar(location)=="skullisland" then
+            if IslandTeleport.traveling and IslandTeleport.chosen=="Skull Island" then
+                IslandTeleport.stop()
+            end
+            return false
+        end
         local area=skullArea()
         local center=area and area:GetAttribute("MapCenter")
-        if typeof(center)~="Vector3" then return false end
+        if typeof(center)~="Vector3" then
+            V.status="Auto Haki: aguardando carregamento do mapa de Skull Island"
+            return false
+        end
         if (root.Position-center).Magnitude<750 then return false end
         if os.clock()-lastSkullTrip>30 and not FeatureState.islandTraveling then
             lastSkullTrip=os.clock()
@@ -5134,7 +5212,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.8 - AUTO HAKI COMPLETO",
+        "GR HUB V11.2 - AUTO HAKI (BOAR FIX)",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5161,6 +5239,10 @@ local function copiarDebug()
         "Vox Fishing Ready: "..tostring(VoxHaki.fishingReady),
         "Vox Fishing Bank: "..tostring(VoxHaki.fishBank),
         "Vox Fishing Marker: "..tostring(VoxHaki.fishMarker),
+        "Vox CurrentLocation: "..tostring(VoxHaki.currentHakiLocation),
+        "Vox Inimigos Haki encontrados: "..tostring(VoxHaki.hakiEnemyCount),
+        "Vox Alvo Haki: "..tostring(VoxHaki.hakiEnemyTarget),
+        "Vox Distancia do alvo Haki: "..tostring(VoxHaki.hakiEnemyDistance),
         "Vox pedidos enviados: "..tostring(VoxHaki.requests),
         "Vox MiniGames auto: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMini),
         "Vox MiniGames iniciar: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMiniStart),
