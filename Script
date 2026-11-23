@@ -803,10 +803,13 @@ local function atualizarVoo(dt)
         end
         local delta=r.destino-root.Position
         local distance=delta.Magnitude
-        local speed=distance>70 and 470 or (distance>20 and 330 or (distance>6 and 205 or 95))
-        FeatureState.seaFollowSpeed=speed
+        local baseSpeed=FeatureState.seaApproachSpeed or 230
+        local speed=distance>70 and baseSpeed or
+            (distance>20 and baseSpeed*.74 or
+            (distance>6 and baseSpeed*.48 or baseSpeed*.27))
+        FeatureState.seaFollowSpeed=math.floor(speed)
         if distance>0.42 then
-            local step=math.min(distance,speed*math.min(dt,.05))
+            local step=math.min(distance,speed*math.min(dt,.045))
             char:TranslateBy(delta.Unit*step)
         end
         faseVoo=distance<1.6 and "Sea: encostado na cabeça" or "Sea: voo suave"
@@ -2354,6 +2357,16 @@ local Sea = (function()
             S.skill=os.clock()
             pcall(skillUse,tool)
         end
+    end
+    FeatureState.seaApproachSpeed=230
+    function S.setApproachSpeed(v)
+        if type(v)=="table" then v=v.Name or v.Value or v.Valor end
+        local speeds={
+            ["Lento (170)"]=170,
+            ["Suave (230)"]=230,
+            ["Normal (320)"]=320
+        }
+        if speeds[v] then FeatureState.seaApproachSpeed=speeds[v] end
     end
     function S.setMode(v)
         if type(v)=="table" then v=v.Name or v.Value or v.Valor end
@@ -3957,7 +3970,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.4 - SEA WATER FLIGHT",
+        "GR HUB V10.5 - SEA APPROACH CONTROL",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -4007,6 +4020,7 @@ local function copiarDebug()
         "Sea estado da água: "..tostring(Sea.waterStatus),
         "Sea altura da água: "..tostring(Sea.oceanHeight),
         "Sea velocidade voo: "..tostring(FeatureState.seaFollowSpeed),
+        "Sea velocidade escolhida: "..tostring(FeatureState.seaApproachSpeed),
         "Sea esquivas: "..tostring(Sea.dodges),
         "Sea perigo detectado: "..tostring(Sea.cachedThreat and Sea.cachedThreat.reason),
         "Status: "..status,
@@ -4143,6 +4157,7 @@ Hub.CreateToggle(secPesca,"Auto Fishing (barra no peixe)",mudarAutoFishing)
 Hub.CreateToggle(secPesca,"Auto Lançar Vara",mudarAutoCastFishing)
 local secSea=Hub.CreateSection("Sea","SEA BEAST")
 Hub.CreateDropdown(secSea,"Tipo de Sea Beast",{"Todos","Normal","Ancestral"},Sea.setMode)
+Hub.CreateDropdown(secSea,"Velocidade para ir ao Sea Beast",{"Suave (230)","Lento (170)","Normal (320)"},Sea.setApproachSpeed)
 Hub.CreateToggle(secSea,"Sea Beast ESP",Sea.setESP)
 Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
 local secTP=Hub.CreateSection("Teleport","ILHAS - TELEPORTE")
@@ -4175,6 +4190,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.4] Sea Beast: voo suavizado, altura real das ondas e cabeça acima da água")
+print("[GR Hub V10.5] Sea Beast: aproximação mais lenta e velocidade ajustável pela interface")
 
 end)()
