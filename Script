@@ -4809,6 +4809,23 @@ local VoxHaki = (function()
         end
         return nil
     end
+    local lastSkullTrip=-100
+    local function checkSkullTravel(root)
+        local area=skullArea()
+        local center=area and area:GetAttribute("MapCenter")
+        if typeof(center)~="Vector3" then return false end
+        if (root.Position-center).Magnitude<750 then return false end
+        if os.clock()-lastSkullTrip>30 and not FeatureState.islandTraveling then
+            lastSkullTrip=os.clock()
+            stopHakiRoute()
+            IslandTeleport.choose("Skull Island")
+            IslandTeleport.go()
+            V.status="Auto Haki: viagem automática para Skull Island"
+        else
+            V.status="Auto Haki: aguardando viagem para Skull Island"
+        end
+        return true
+    end
     local function autoHakiMission()
         if not V.fullAuto or not running() then return end
         if not hakiFree() then
@@ -4826,6 +4843,7 @@ local VoxHaki = (function()
         local _,root,hum=character()
         if not root or not hum or hum.Health<=0 or not data then return end
         local quest=activeQuest(data)
+        if checkSkullTravel(root) then return end
         if quest~="Vox Sense Training" then
             V.fishingReady=false
             FeatureState.hakiFishingLookAt=nil
@@ -4913,7 +4931,37 @@ local VoxHaki = (function()
             if not encontrarVaraPesca() then
                 V.fishingReady=false
                 stopHakiRoute()
-                V.status="Auto Haki: falta Fishing Rod; ela é vendida pelo Fisherman (não Askard)"
+                local inventory=data and data.Tools
+                if type(inventory)~="table" then inventory=data and data.Base and data.Base.Tools end
+                local stored=inventory and inventory.Unequiped
+                local equipped=inventory and inventory.Equiped
+                local function isRod(item)
+                    if type(item)~="table" then return false end
+                    local n=tostring(item.Name or ""):lower()
+                    return n:find("fishing",1,true) and
+                        (n:find("rod",1,true) or n:find("road",1,true))
+                end
+                local rodIndex,rodName
+                if type(stored)=="table" then
+                    for index,item in ipairs(stored) do
+                        if isRod(item) then rodIndex=index;rodName=item.Name;break end
+                    end
+                end
+                if rodIndex and dadosModulo and dadosModulo.Network then
+                    autoAction("HakiEquipRod",5,function()
+                        dadosModulo.Network:FireServer("ToolsData","Equip",rodIndex,rodName)
+                        V.status="Auto Haki: equipando "..rodName.." do inventário"
+                    end)
+                else
+                    local owned=false
+                    if type(equipped)=="table" then
+                        for _,item in ipairs(equipped) do
+                            if isRod(item) then owned=true;break end
+                        end
+                    end
+                    V.status=owned and "Auto Haki: vara equipada; aguardando Backpack"
+                        or "Auto Haki: falta Fishing Rod (Fisherman, 5000 Gold durante a missão)"
+                end
             else
                 local bank=fishShorePoint(marker)
                 V.fishBank=bank
@@ -5213,8 +5261,121 @@ local function copiarDebug()
     table.insert(t,"HUD:")
     for _,s in ipairs(lerLabels()) do table.insert(t,s) end
     local result=table.concat(t,"\n")
-    print(result)
-    if setclipboard then pcall(setclipboard,result) end
+    local function tryCopy(txt)
+        local api={setclipboard,toclipboard,writeclipboard}
+        if type(env.setclipboard)=="function" then table.insert(api,env.setclipboard) end
+        if type(env.toclipboard)=="function" then table.insert(api,env.toclipboard) end
+        for _,fn in ipairs(api) do
+            if type(fn)=="function" then
+                local ok=pcall(fn,txt)
+                if ok then return true end
+            end
+        end
+        local clip=env.Clipboard
+        if type(clip)=="table" and type(clip.set)=="function" then
+            local ok=pcall(clip.set,txt)
+            if ok then return true end
+        end
+        return false
+    end
+    local saved=false
+    if type(writefile)=="function" then
+        saved=pcall(writefile,"GRHub_Debug.txt",result)
+    end
+    local function message(msg)
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification",{
+                Title="GR Hub - Debug",Text=msg,Duration=6
+            })
+        end)
+    end
+    if tryCopy(result) then
+        message("Debug copiado para a área de transferência!"..
+            (saved and " Também salvo em GRHub_Debug.txt" or ""))
+        return
+    end
+    local pg=player:FindFirstChildOfClass("PlayerGui")
+    if not pg then
+        message(saved and "Debug salvo no Delta: GRHub_Debug.txt" or "Cópia não disponível")
+        return
+    end
+    local old=pg:FindFirstChild("GRHubDebugCopy")
+    if old then old:Destroy() end
+    local gui=Instance.new("ScreenGui")
+    gui.Name="GRHubDebugCopy"
+    gui.ResetOnSpawn=false
+    gui.DisplayOrder=99999
+    gui.Parent=pg
+    local frame=Instance.new("Frame")
+    frame.Size=UDim2.fromScale(.86,.69)
+    frame.Position=UDim2.fromScale(.07,.15)
+    frame.BackgroundColor3=Color3.fromRGB(25,28,35)
+    frame.Active=true
+    frame.Draggable=true
+    frame.Parent=gui
+    local corner=Instance.new("UICorner")
+    corner.CornerRadius=UDim.new(0,12)
+    corner.Parent=frame
+    local title=Instance.new("TextLabel")
+    title.BackgroundTransparency=1
+    title.Size=UDim2.new(1,-95,0,40)
+    title.Position=UDim2.fromOffset(12,0)
+    title.Text="DEBUG - segure o texto para copiar"
+    title.TextColor3=Color3.new(1,1,1)
+    title.Font=Enum.Font.GothamBold
+    title.TextSize=14
+    title.TextXAlignment=Enum.TextXAlignment.Left
+    title.Parent=frame
+    local close=Instance.new("TextButton")
+    close.Size=UDim2.fromOffset(38,32)
+    close.Position=UDim2.new(1,-43,0,4)
+    close.BackgroundColor3=Color3.fromRGB(120,37,37)
+    close.Text="X"
+    close.TextColor3=Color3.new(1,1,1)
+    close.Parent=frame
+    Instance.new("UICorner",close)
+    close.Activated:Connect(function() gui:Destroy() end)
+    local input=Instance.new("TextBox")
+    input.Size=UDim2.new(1,-22,1,-100)
+    input.Position=UDim2.fromOffset(11,45)
+    input.BackgroundColor3=Color3.fromRGB(15,17,21)
+    input.TextColor3=Color3.fromRGB(240,240,240)
+    input.Font=Enum.Font.Code
+    input.TextSize=12
+    input.TextXAlignment=Enum.TextXAlignment.Left
+    input.TextYAlignment=Enum.TextYAlignment.Top
+    input.TextWrapped=false
+    input.MultiLine=true
+    input.ClearTextOnFocus=false
+    input.TextEditable=true
+    input.Text=result
+    input.Parent=frame
+    local copy=Instance.new("TextButton")
+    copy.Size=UDim2.new(1,-22,0,39)
+    copy.Position=UDim2.new(0,11,1,-45)
+    copy.BackgroundColor3=Color3.fromRGB(54,105,182)
+    copy.TextColor3=Color3.new(1,1,1)
+    copy.Font=Enum.Font.GothamBold
+    copy.TextSize=14
+    copy.Text="COPIAR DEBUG"
+    copy.Parent=frame
+    Instance.new("UICorner",copy)
+    copy.Activated:Connect(function()
+        if tryCopy(input.Text) then
+            message("Debug copiado!")
+            gui:Destroy()
+        else
+            input:CaptureFocus()
+            pcall(function()
+                input.SelectionStart=1
+                input.CursorPosition=#input.Text+1
+            end)
+            message(saved and "Sem clipboard: texto selecionado; arquivo GRHub_Debug.txt salvo"
+                or "Sem clipboard: selecione e copie o texto")
+        end
+    end)
+    message(saved and "Debug salvo em GRHub_Debug.txt. Copie pelo campo de texto."
+        or "Use a caixa de texto para copiar o debug.")
 end
 
 (function()
