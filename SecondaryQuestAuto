@@ -844,6 +844,12 @@ return function(C)
         local preferred=(key=="ThirstyMerchant" and id=="Talk_ThirstyMerchantWater_SQ")
             and "Thirsty Merchant Ambush" or nil
         local npcPos,npcModel=converseInfo(key,root,preferred)
+        if preferred then
+            local alternate,alternateModel=npcPosition(preferred,root)
+            npcPos=alternate or pos
+            npcModel=alternateModel
+            R.npcAlias=preferred
+        end
         local target=npcPos or pos
         R.lastNPC=key
         if not moveTo(target,3.8,"Indo conversar: "..key) then return end
