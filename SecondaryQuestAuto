@@ -24,6 +24,8 @@ return function(C)
         interactionTarget="-",interactionMode="-",interactionDistance=nil,
         interactionAttempts=0,zoneAttempts=0,zoneStatus="-",desertStatus="-",
         doorAttempts=0,doorStatus="-",npcAlias="-",
+        npcDistance3D=nil,npcDistanceXZ=nil,npcHeightDifference=nil,
+        npcReady=false,npcArrival="-",npcLastTarget=nil,
         phantomLever=0,phantomAttempts=0,phantomDistance=nil,
         phantomAction="-",phantomStatus="-",phantomObjectFound=false
     }
@@ -283,21 +285,36 @@ return function(C)
     local function stopRoute()
         if C.getRoute() and C.getRoute().chave=="SecondaryQuest" then C.liberarVoo() end
     end
-    local function moveTo(pos,near,label)
+    local function moveTo(pos,near,label,isNPC)
         R.interactionTarget=tostring(label)
         if typeof(pos)~="Vector3" then
             stopRoute()
             R.status="Posição não carregada: "..label
             R.interactionDistance=nil
+            if isNPC then R.npcReady=false;R.npcArrival="Sem posição" end
             return false
         end
         local _,root,hum,ok=alive()
         if not ok then return false end
-        local dist=(root.Position-pos).Magnitude
+        local delta=root.Position-pos
+        local dist=delta.Magnitude
+        local flat=Vector3.new(delta.X,0,delta.Z).Magnitude
+        local high=math.abs(delta.Y)
         R.interactionDistance=math.floor(dist*10)/10
         local arrival=math.clamp(tonumber(near) or 3.5,2.4,7)
-        local yOffset=dist>15 and 1.8 or 0.35
-        if dist>arrival then
+        local reached=dist<=arrival
+        if isNPC then
+            R.npcDistance3D=math.floor(dist*10)/10
+            R.npcDistanceXZ=math.floor(flat*10)/10
+            R.npcHeightDifference=math.floor(high*10)/10
+            R.npcLastTarget=pos
+            reached=reached or (flat<=5 and high<=7.5)
+            R.npcReady=reached
+            R.npcArrival=reached and "Pronto para conversar"
+                or ("Aproximando ("..math.floor(flat).." horizontal / "..math.floor(high).." altura)")
+        end
+        if not reached then
+            local yOffset=isNPC and 3.0 or (dist>15 and 1.8 or 0.35)
             C.definirDestino(pos+Vector3.new(0,yOffset,0),"SecondaryQuest")
             R.status=label.." ("..math.floor(dist).." studs)"
             return false
@@ -822,7 +839,7 @@ return function(C)
             return
         end
         R.clownDistance=math.floor((root.Position-target).Magnitude)
-        if not moveTo(target,5.5,"Indo ao Bobo (Tomato Clown)") then return end
+        if not moveTo(target,6.0,"Indo ao Bobo (Tomato Clown)",true) then return end
         R.lastNPC="Tomato Clown"
         once("SQClownStartShow",2.6,function()
             if server("Elysium_Converse","TomatoClown","StartShow") then
@@ -854,10 +871,11 @@ return function(C)
         end
         local target=npcPos or pos
         R.lastNPC=key
-        if not moveTo(target,3.8,"Indo conversar: "..key) then return end
+        if not moveTo(target,6.0,"Indo conversar: "..key,true) then return end
         local action=spec and spec[2] or "Talk"
         once("SQTalk:"..id,1.15,function()
             R.interactionAttempts+=1
+            R.npcStatus="Tentando "..key.." / "..action
             if server("Elysium_Converse",key,action) then
                 R.npcRequests+=1
                 R.npcStatus=key.." / "..action
@@ -1104,7 +1122,7 @@ return function(C)
         local pos,model=converseInfo(converse,root)
         if not pos then pos,model=npcPosition(actor,root) end
         R.lastNPC=actor
-        if not moveTo(pos,3.9,"Indo ao NPC "..actor) then
+        if not moveTo(pos,6.0,"Indo ao NPC "..actor,true) then
             if not pos then R.skipped[quest.name]=os.clock()+25 end
             return
         end
