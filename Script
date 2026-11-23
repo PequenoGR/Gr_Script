@@ -4048,9 +4048,9 @@ local VoxHaki = (function()
     local function activeQuest(data)
         local progress=getProgress()
         local actives=progress and progress.Quests
-        if type(actives)~="table" then
+        if type(actives)~="table" or next(actives)==nil then
             local d=data and data.Quests
-            actives=d and (d.Actives or d.Quests)
+            actives=d and (d.Actives or d.Quests) or actives
         end
         if type(actives)=="table" then
             for _,name in ipairs(QUESTS) do
@@ -4765,11 +4765,47 @@ local VoxHaki = (function()
             V.status="Auto Haki: atacando "..name
         end)
     end
-    local function currentObjective(quest)
+    local function currentObjective(quest,data)
+        local infos=mainModulo and mainModulo.QuestsInfo
+        local info=infos and infos[quest]
+        local current=data and data.Quests and data.Quests.Actives
+        local raw=current and current[quest]
+        if info and type(info.SubQuests)=="table" and type(raw)=="table" then
+            for stageIndex,stage in ipairs(info.SubQuests) do
+                local values=raw[stageIndex]
+                if type(values)=="table" then
+                    local stageDone=true
+                    for objectiveIndex,item in ipairs(stage.Objectives or {}) do
+                        local count=tonumber(values[objectiveIndex]) or 0
+                        if count<(tonumber(item.Goal) or 1) then
+                            local valid=true
+                            if type(item.Validate)=="function" then
+                                local ok,res=pcall(item.Validate,player)
+                                valid=ok and res~=false
+                            end
+                            if valid then
+                                V.objectiveProgress=count
+                                V.objectiveGoal=tonumber(item.Goal) or 1
+                                V.objectiveStage=stageIndex
+                                return item.ObjectiveID
+                            end
+                            stageDone=false
+                        end
+                    end
+                    if not stageDone then break end
+                end
+            end
+        end
+        local progress=getProgress()
+        local activeIds=progress and progress.ObjectiveIds or {}
         local sequence=objectiveOrder[quest]
         if not sequence then return nil end
         for _,id in ipairs(sequence) do
-            if objectiveActive(id) then return id end
+            if activeIds[id]~=nil or objectiveActive(id) then
+                V.objectiveProgress=nil
+                V.objectiveGoal=tonumber(activeIds[id])
+                return id
+            end
         end
         return nil
     end
@@ -4790,8 +4826,10 @@ local VoxHaki = (function()
         local _,root,hum=character()
         if not root or not hum or hum.Health<=0 or not data then return end
         local quest=activeQuest(data)
-        V.fishingReady=false
-        FeatureState.hakiFishingLookAt=nil
+        if quest~="Vox Sense Training" then
+            V.fishingReady=false
+            FeatureState.hakiFishingLookAt=nil
+        end
         if not quest then
             local sense,armor=levels(data)
             local candidate=sense<1 or armor<1
@@ -4814,7 +4852,13 @@ local VoxHaki = (function()
             end
             return
         end
-        local objective=currentObjective(quest)
+        local objective=currentObjective(quest,data)
+        if objective~="Catch_Fish" then
+            V.fishingReady=false
+            FeatureState.hakiFishingLookAt=nil
+        end
+        V.activeQuest=quest
+        V.activeObjective=objective
         if not objective then
             V.status="Auto Haki: aguardando objetivo atualizado em "..quest
             stopHakiRoute()
@@ -4822,6 +4866,7 @@ local VoxHaki = (function()
         end
         if lastObjective~=objective then
             lastObjective=objective
+            V.fishingReady=false
             V.status="Auto Haki: novo objetivo "..objective
         end
         if objective:sub(1,11)=="Talk_Askard" then
@@ -4837,6 +4882,10 @@ local VoxHaki = (function()
             autoFight("Giant Boar",skullMarker("InterestPoints","GiantBoarArena"))
         elseif objective=="Defeat_AskardHistory" then
             autoFight("Askard",trainerPosition())
+        elseif objective=="Trial1_Askard_HK" or objective=="Trial2_Askard_HK" then
+            if moveHakiTo(trainerPosition(),5,"teste final com Askard") then
+                autoAction(objective,5,function() network(nil) end)
+            end
         elseif objective=="Collect_WaterBarrel_HK" then
             local area=skullArea()
             local instances=area and area:FindFirstChild("Instances")
@@ -4863,12 +4912,8 @@ local VoxHaki = (function()
             V.fishMarker=marker
             if not encontrarVaraPesca() then
                 V.fishingReady=false
-                if moveHakiTo(trainerPosition(),5,"buscando vara com Askard") then
-                    autoAction("HakiGetRod",12,function()
-                        network(nil)
-                        V.status="Auto Haki: tentando receber Fishing Rod de Askard"
-                    end)
-                end
+                stopHakiRoute()
+                V.status="Auto Haki: falta Fishing Rod; ela é vendida pelo Fisherman (não Askard)"
             else
                 local bank=fishShorePoint(marker)
                 V.fishBank=bank
@@ -4951,6 +4996,12 @@ local VoxHaki = (function()
         V.fullAuto=(v==true)
         State.AutoHaki=V.fullAuto
         if V.fullAuto then
+            if State.AutoFarmQuest then definirFarm(false) end
+            if State.AutoFarmFruit then definirFarmFruta(false) end
+            if State.AutoBoss then BossFarm.setAuto(false) end
+            if State.AutoSeaBeast then Sea.setAuto(false) end
+            if State.AutoRaid then Raid.setAuto(false) end
+            if FeatureState.islandTraveling then IslandTeleport.stop() end
             V.lastRequest=-100
             V.miniLastStart=-100
             V.miniStatus="Auto Haki Completo: procurando treinos"
@@ -5046,6 +5097,13 @@ local function copiarDebug()
         "Vox Auto Iniciar: "..tostring(VoxHaki.fullAuto or VoxHaki.autoUnlock),
         "Vox Auto Mastery: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMastery),
         "Vox status: "..tostring(VoxHaki.status),
+        "Vox quest: "..tostring(VoxHaki.activeQuest),
+        "Vox objetivo: "..tostring(VoxHaki.activeObjective),
+        "Vox etapa: "..tostring(VoxHaki.objectiveStage),
+        "Vox progresso: "..tostring(VoxHaki.objectiveProgress).."/"..tostring(VoxHaki.objectiveGoal),
+        "Vox Fishing Ready: "..tostring(VoxHaki.fishingReady),
+        "Vox Fishing Bank: "..tostring(VoxHaki.fishBank),
+        "Vox Fishing Marker: "..tostring(VoxHaki.fishMarker),
         "Vox pedidos enviados: "..tostring(VoxHaki.requests),
         "Vox MiniGames auto: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMini),
         "Vox MiniGames iniciar: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMiniStart),
