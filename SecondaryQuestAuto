@@ -8,6 +8,7 @@ return function(C)
         lastAction={},skipped={},lastTravel=-100,
         lastScan=0,lastEnemy=nil,lastEnemyScan=0,
         sessionDone={},busyFishing=false,
+        previousFishing=false,previousCast=false,fishHover=nil,fishHoverPoint=nil,
         currentIsland=nil,progress="-",lastEnemyName=nil,
         lastProgressKey=nil,lastProgressTime=0,lastNPC=nil,
         objectiveStage=0,objectiveIndex=0,
@@ -437,6 +438,33 @@ return function(C)
         end)
     end
     local passiveZone={Return_MerchantCamp_SQ=true}
+    local function interactMarker(pos,objId)
+        local _,root,hum,ok=alive()
+        if not ok then return false end
+        local interacted=false
+        for _,node in ipairs(workspace:GetPartBoundsInRadius(pos,7)) do
+            local match=norm(node.Name)==norm(objId)
+                or (node.Position-pos).Magnitude<2.5
+            if match then
+                if type(firetouchinterest)=="function" then
+                    local done=pcall(function()
+                        firetouchinterest(root,node,0)
+                        firetouchinterest(root,node,1)
+                    end)
+                    interacted=interacted or done
+                end
+                local prompt=node:FindFirstChildWhichIsA("ProximityPrompt",true)
+                if prompt and type(fireproximityprompt)=="function" then
+                    interacted=pcall(fireproximityprompt,prompt) or interacted
+                end
+                local click=node:FindFirstChildWhichIsA("ClickDetector",true)
+                if click and type(fireclickdetector)=="function" then
+                    interacted=pcall(fireclickdetector,click) or interacted
+                end
+            end
+        end
+        return interacted
+    end
     local function doZone(quest,obj,pos)
         local id=tostring(obj.ObjectiveID or "")
         if not zoneModules[id] then
@@ -510,11 +538,49 @@ return function(C)
         end)
     end
     local function restoreFishing()
+        if R.fishHover then pcall(function() R.fishHover:Destroy() end) end
+        R.fishHover=nil
+        R.fishHoverPoint=nil
         if R.busyFishing then
             R.busyFishing=false
-            C.mudarAutoFishing(false)
-            C.mudarAutoCastFishing(false)
+            if C.State.AutoFishing~=R.previousFishing then
+                C.mudarAutoFishing(R.previousFishing)
+            end
+            if C.State.AutoCastFishing~=R.previousCast then
+                C.mudarAutoCastFishing(R.previousCast)
+            end
         end
+    end
+    local function holdFishingSpot(pos)
+        local _,root,hum,ok=alive()
+        if not ok or typeof(pos)~="Vector3" then return false end
+        local goal=R.fishHoverPoint
+        if typeof(goal)~="Vector3" then
+            local args=RaycastParams.new()
+            args.FilterType=Enum.RaycastFilterType.Include
+            args.FilterDescendantsInstances={workspace.Terrain}
+            args.IgnoreWater=false
+            local ray=workspace:Raycast(pos+Vector3.new(0,240,0),
+                Vector3.new(0,-600,0),args)
+            local level=ray and ray.Position.Y or pos.Y
+            goal=Vector3.new(root.Position.X,math.max(level+5,root.Position.Y+2),
+                root.Position.Z)
+            R.fishHoverPoint=goal
+        end
+        local hover=R.fishHover
+        if not hover or hover.Parent~=root then
+            if hover then pcall(function() hover:Destroy() end) end
+            hover=Instance.new("BodyPosition")
+            hover.Name="GRSecondaryFishingHover"
+            hover.P=55000
+            hover.D=6000
+            hover.MaxForce=Vector3.new(1e8,1e8,1e8)
+            hover.Position=goal
+            hover.Parent=root
+            R.fishHover=hover
+        end
+        hover.Position=goal
+        return true
     end
     local function step()
         if not R.enabled or not C.running() then return end
@@ -598,7 +664,9 @@ return function(C)
         local zoneIsland=zone and zone.Parent and zone.Parent.Parent
             and zone.Parent.Parent.Name or nil
         local targetIsland=TALK_ISLAND[id] or zoneIsland or quest.island
-        if targetIsland~=quest.island then
+        if quest.name=="The Sky Hermit" and id=="Activate_HeavenstepCheckpoints" then
+            R.status="Heavenstep: seguindo próxima bandeira"
+        elseif targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
         elseif travelTo(quest) then return end
         local pos=objectivePoint(quest,obj)
@@ -619,15 +687,26 @@ return function(C)
             end
             if moveTo(pos,13,"Indo pescar para "..quest.name) then
                 stopRoute()
-                R.busyFishing=true
-                if not C.State.AutoFishing then C.mudarAutoFishing(true) end
-                if not C.State.AutoCastFishing then C.mudarAutoCastFishing(true) end
-                R.status="Pescando para "..quest.name.." | "..R.progress
+                if not R.busyFishing then
+                    R.previousFishing=C.State.AutoFishing
+                    R.previousCast=C.State.AutoCastFishing
+                    R.busyFishing=true
+                end
+                if holdFishingSpot(pos) then
+                    if not C.State.AutoFishing then C.mudarAutoFishing(true) end
+                    if not C.State.AutoCastFishing then C.mudarAutoCastFishing(true) end
+                    R.status="Pescando parado no ar para "..quest.name.." | "..R.progress
+                else
+                    R.status="Aguardando flutuação segura na pesca"
+                end
             end
         elseif pos then
             restoreFishing()
-            if moveTo(pos,5,"Indo completar "..id) then
-                R.status="Aguardando interação especial: "..id
+            if moveTo(pos,4,"Indo completar "..id) then
+                once("SQSpecial:"..id,1.25,function()
+                    local touched=interactMarker(pos,id)
+                    R.status=(touched and "Interagindo com " or "Aguardando gatilho em ")..id
+                end)
             end
         else
             restoreFishing()
