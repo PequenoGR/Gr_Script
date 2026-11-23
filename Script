@@ -848,10 +848,13 @@ local function atualizarVoo(dt)
             faseVoo="Boss: retorno concluído"
             return
         end
-        local velocity=math.max(FeatureState.bossReturnSpeed or 5000,modo.Velocidade)
-        local step=math.min(distance,velocity*math.min(dt,.1))
+        local configured=FeatureState.bossReturnSpeed or 360
+        local velocity=distance>50 and configured or
+            (distance>20 and math.min(configured,260) or
+            (distance>8 and math.min(configured,155) or math.min(configured,95)))
+        local step=math.min(distance,velocity*math.min(dt,.05))
         char:TranslateBy(offset.Unit*step)
-        faseVoo="Boss: retorno rápido"
+        faseVoo="Boss: aproximação suave"
         return
     end
     if r.chave=="BossDodge" then
@@ -3341,7 +3344,7 @@ local BossFarm = (function()
         lastHP=nil,lastEnemy=nil,ability=nil,dead=false,lastError=0,
         dodgeUntil=0,dodgePoint=nil,dodges=0,lastDodge=0,dodgeReason="-",
         lastPlayerHP=nil,lastThreatToken=nil,lastDangerScan=-10,zones={},hazardsFound=0,currentDanger="-",
-        dodgeMode="Equilibrado",returnSpeed=5000,riskScore=0,safePoint=nil,blockedDodges=0,
+        dodgeMode="Equilibrado",returnSpeed=360,riskScore=0,safePoint=nil,blockedDodges=0,
         lastCue=nil,cueAt=0,retreatUntil=0,nextRetreat=0,scanCount=0
     }
     local function enemyRoot(model)
@@ -3523,13 +3526,13 @@ local BossFarm = (function()
         end
     end
     FeatureState.bossDodgeSpeed=740
-    FeatureState.bossReturnSpeed=5000
+    FeatureState.bossReturnSpeed=360
     function B.setReturnSpeed(v)
         if type(v)=="table" then v=v.Name or v.Value or v.Valor end
         local choices={
-            ["Turbo (5000)"]=5000,
-            ["Rápido (2500)"]=2500,
-            ["Ultra (10000)"]=10000
+            ["Suave (220)"]=220,
+            ["Normal (360)"]=360,
+            ["Rápido (550)"]=550
         }
         local value=choices[v]
         if value then
@@ -4123,7 +4126,7 @@ end
 refreshBossList()
 Hub.CreateToggle(secBoss,"Auto Boss",BossFarm.setAuto,"crown",false)
 Hub.CreateDropdown(secBoss,"Modo de Esquiva",{"Equilibrado","Agressivo","Defensivo"},BossFarm.setDodgeMode)
-Hub.CreateDropdown(secBoss,"Velocidade de retorno",{"Turbo (5000)","Rápido (2500)","Ultra (10000)"},BossFarm.setReturnSpeed)
+Hub.CreateDropdown(secBoss,"Velocidade de retorno",{"Normal (360)","Suave (220)","Rápido (550)"},BossFarm.setReturnSpeed)
 Hub.CreateButton(secBoss,"Atualizar lista de bosses",refreshBossList,"refresh-cw")
 Hub.CreateButton(secBoss,"Status do Auto Boss",BossFarm.showStatus,"eye")
 local secFrutas=Hub.CreateSection("Fruits","AUTO FRUIT")
