@@ -4018,6 +4018,7 @@ local VoxHaki = (function()
         autoMini=false,autoMiniStart=false,autoMiniFishing=false,
         managedFish=false,savedFishing=false,savedCastFishing=false,fishStatus="-",
         fishingReady=false,fishBank=nil,fishMarker=nil,shoreCache=nil,
+        fishingPlatform=nil,fishingPlatformY=nil,fishingPlatformCharacter=nil,
         miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
         miniLastStart=-100,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
@@ -4494,7 +4495,93 @@ local VoxHaki = (function()
             end
         end
     end
+    local function destroyHakiFishingPlatform()
+        if V.fishingPlatform then
+            pcall(function() V.fishingPlatform:Destroy() end)
+        end
+        V.fishingPlatform=nil
+        V.fishingPlatformY=nil
+        V.fishingPlatformCharacter=nil
+    end
+    local function updateHakiFishingPlatform()
+        local char,root,hum=character()
+        if not char or not root or not hum or hum.Health<=0 then
+            destroyHakiFishingPlatform()
+            return false
+        end
+        if V.fishingPlatformCharacter and V.fishingPlatformCharacter~=char then
+            destroyHakiFishingPlatform()
+        end
+        local platform=V.fishingPlatform
+        if not platform or not platform.Parent then
+            local marker=V.fishMarker
+            local waterHeight=nil
+            local params=RaycastParams.new()
+            params.FilterType=Enum.RaycastFilterType.Include
+            params.FilterDescendantsInstances={workspace.Terrain}
+            params.IgnoreWater=false
+            for _,position in ipairs({
+                typeof(marker)=="Vector3" and marker or root.Position,
+                root.Position
+            }) do
+                local start=Vector3.new(position.X,math.max(position.Y,root.Position.Y)+220,position.Z)
+                local ray=workspace:Raycast(start,Vector3.new(0,-700,0),params)
+                if ray and ray.Material==Enum.Material.Water then
+                    waterHeight=ray.Position.Y
+                    break
+                end
+            end
+            local feet=root.Position.Y-hum.HipHeight-root.Size.Y*.5
+            local surface=waterHeight and waterHeight+0.8 or feet-0.1
+            if not waterHeight and hum:GetState()==Enum.HumanoidStateType.Swimming then
+                surface=feet+2.5
+            end
+            platform=Instance.new("Part")
+            platform.Name="GRHakiFishingPlatform"
+            platform.Size=Vector3.new(5,0.55,5)
+            platform.Anchored=true
+            platform.CanCollide=true
+            platform.CanTouch=false
+            platform.CanQuery=false
+            platform.Transparency=1
+            platform.CastShadow=false
+            platform.Locked=true
+            platform.Position=Vector3.new(root.Position.X,surface-platform.Size.Y*.5,root.Position.Z)
+            platform.Parent=workspace
+            V.fishingPlatform=platform
+            V.fishingPlatformY=platform.Position.Y
+            V.fishingPlatformCharacter=char
+        end
+        local surfaceY=(V.fishingPlatformY or platform.Position.Y)+platform.Size.Y*.5
+        local minimumY=surfaceY+hum.HipHeight+root.Size.Y*.5+0.15
+        if root.Position.Y<minimumY-0.3 then
+            pcall(function()
+                local rotation=root.CFrame.Rotation
+                root.CFrame=CFrame.new(root.Position.X,minimumY,root.Position.Z)*rotation
+                root.AssemblyLinearVelocity=Vector3.zero
+                if hum:GetState()==Enum.HumanoidStateType.Swimming then
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end)
+        end
+        platform.Position=Vector3.new(root.Position.X,V.fishingPlatformY,root.Position.Z)
+        return true
+    end
+    local lastPlatformFollow=0
+    connect(RunService.Heartbeat,function()
+        if not running() then return end
+        local platform=V.fishingPlatform
+        if not platform or not platform.Parent then return end
+        if not V.fullAuto or V.activeObjective~="Catch_Fish" then
+            destroyHakiFishingPlatform()
+            return
+        end
+        if os.clock()-lastPlatformFollow<0.06 then return end
+        lastPlatformFollow=os.clock()
+        updateHakiFishingPlatform()
+    end)
     local function restoreHakiFishing()
+        destroyHakiFishingPlatform()
         if V.managedFish then
             V.managedFish=false
             if State.AutoFishing~=V.savedFishing then mudarAutoFishing(V.savedFishing) end
@@ -4528,9 +4615,13 @@ local VoxHaki = (function()
             V.savedCastFishing=State.AutoCastFishing
             V.managedFish=true
         end
+        if not updateHakiFishingPlatform() then
+            V.fishStatus="Aguardando plataforma da pesca"
+            return
+        end
         if not State.AutoFishing then mudarAutoFishing(true) end
         if not State.AutoCastFishing then mudarAutoCastFishing(true) end
-        V.fishStatus="Fishing automático: pescando 10 peixes do Vox Sense"
+        V.fishStatus="Pescando 10 peixes Vox Sense sobre plataforma invisível"
     end
     function V.setMiniFishing(v)
         V.autoMiniFishing=(v==true)
@@ -5056,13 +5147,13 @@ local VoxHaki = (function()
                     stopHakiRoute()
                     V.status="Auto Haki: sem margem segura carregada"
                 elseif moveHakiTo(bank,4,"indo à margem segura para pescar") then
-                    local _,_,hum=character()
-                    if hum and hum:GetState()==Enum.HumanoidStateType.Swimming then
-                        V.status="Auto Haki: aguardando sair da água"
-                    else
+                    if updateHakiFishingPlatform() then
                         V.fishingReady=true
                         FeatureState.hakiFishingLookAt=marker
-                        V.status="Auto Haki: pescando os 10 peixes Vox Sense"
+                        V.status="Auto Haki: pescando os 10 peixes sobre plataforma"
+                    else
+                        V.fishingReady=false
+                        V.status="Auto Haki: aguardando criação da plataforma"
                     end
                 end
             end
@@ -5239,6 +5330,8 @@ local function copiarDebug()
         "Vox Fishing Ready: "..tostring(VoxHaki.fishingReady),
         "Vox Fishing Bank: "..tostring(VoxHaki.fishBank),
         "Vox Fishing Marker: "..tostring(VoxHaki.fishMarker),
+        "Vox Plataforma Pesca: "..tostring(VoxHaki.fishingPlatform~=nil and VoxHaki.fishingPlatform.Parent~=nil),
+        "Vox Plataforma Y: "..tostring(VoxHaki.fishingPlatformY),
         "Vox CurrentLocation: "..tostring(VoxHaki.currentHakiLocation),
         "Vox Inimigos Haki encontrados: "..tostring(VoxHaki.hakiEnemyCount),
         "Vox Alvo Haki: "..tostring(VoxHaki.hakiEnemyTarget),
