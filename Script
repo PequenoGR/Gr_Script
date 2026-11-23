@@ -815,7 +815,27 @@ local function atualizarVoo(dt)
         faseVoo=distance<1.6 and "Sea: encostado na cabeça" or "Sea: voo suave"
         return
     end
-    if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss") or (State.AutoBoss and r.chave=="AutoBoss")) and (root.Position-r.destino).Magnitude<=30 then
+    if r.chave=="AutoBoss" then
+        if FeatureState.raidHover then
+            pcall(function() FeatureState.raidHover:Destroy() end)
+            FeatureState.raidHover=nil
+        end
+        if bodyVelocity then
+            bodyVelocity.MaxForce=Vector3.new(0,math.max(10000,root.AssemblyMass*workspace.Gravity*1.5),0)
+        end
+        local shift=r.destino-root.Position
+        local distance=shift.Magnitude
+        local baseSpeed=FeatureState.bossApproachSpeed or 180
+        local speed=distance>70 and baseSpeed or
+            (distance>25 and baseSpeed*.7 or
+            (distance>8 and baseSpeed*.48 or baseSpeed*.3))
+        if distance>.45 then
+            char:TranslateBy(shift.Unit*math.min(distance,speed*math.min(dt,.05)))
+        end
+        faseVoo=distance<2 and "Boss: perto do alvo" or "Boss: aproximação suave"
+        return
+    end
+    if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss")) and (root.Position-r.destino).Magnitude<=30 then
         if not FeatureState.raidHover or FeatureState.raidHover.Parent~=root then
             if FeatureState.raidHover then pcall(function() FeatureState.raidHover:Destroy() end) end
             local hold=Instance.new("BodyPosition")
@@ -3344,7 +3364,7 @@ local BossFarm = (function()
         lastHP=nil,lastEnemy=nil,ability=nil,dead=false,lastError=0,
         dodgeUntil=0,dodgePoint=nil,dodges=0,lastDodge=0,dodgeReason="-",
         lastPlayerHP=nil,lastThreatToken=nil,lastDangerScan=-10,zones={},hazardsFound=0,currentDanger="-",
-        dodgeMode="Equilibrado",returnSpeed=360,riskScore=0,safePoint=nil,blockedDodges=0,
+        dodgeMode="Equilibrado",returnSpeed=360,approachSpeed=180,riskScore=0,safePoint=nil,blockedDodges=0,
         lastCue=nil,cueAt=0,retreatUntil=0,nextRetreat=0,scanCount=0
     }
     local function enemyRoot(model)
@@ -3527,6 +3547,20 @@ local BossFarm = (function()
     end
     FeatureState.bossDodgeSpeed=740
     FeatureState.bossReturnSpeed=360
+    FeatureState.bossApproachSpeed=180
+    function B.setApproachSpeed(v)
+        if type(v)=="table" then v=v.Name or v.Value or v.Valor end
+        local speeds={
+            ["Lento (120)"]=120,
+            ["Suave (180)"]=180,
+            ["Normal (280)"]=280,
+            ["Rápido (400)"]=400
+        }
+        if speeds[v] then
+            B.approachSpeed=speeds[v]
+            FeatureState.bossApproachSpeed=speeds[v]
+        end
+    end
     function B.setReturnSpeed(v)
         if type(v)=="table" then v=v.Name or v.Value or v.Valor end
         local choices={
@@ -3840,6 +3874,7 @@ local BossFarm = (function()
             B.target=boss
             B.lastHP=nil
             B.lastPlayerHP=nil
+            B.lastDodge=0
             B.lastCue=nil
             B.lastThreatToken=nil
             B.lastDangerScan=-10
@@ -3903,8 +3938,9 @@ local BossFarm = (function()
         end
         local distance=(root.Position-enemy.Position).Magnitude
         local remaining=(root.Position-target).Magnitude
-        if remaining>3 and not blocked(root.Position,target) then
-            B.status="Voltando rápido ao boss: "..bossName(boss)
+        if remaining>24 and B.lastDodge>0 and now-B.lastDodge<2.7
+            and not blocked(root.Position,target) then
+            B.status="Voltando ao boss após esquiva: "..bossName(boss)
             definirDestino(target,"BossReturn")
         else
             B.status=(distance>13 and "Aproximando do boss: " or "Atacando boss: ")..bossName(boss)
@@ -3986,6 +4022,7 @@ local function copiarDebug()
         "Boss zonas perigosas: "..tostring(BossFarm.hazardsFound),
         "Boss modo esquiva: "..tostring(BossFarm.dodgeMode),
         "Boss velocidade retorno: "..tostring(BossFarm.returnSpeed),
+        "Boss velocidade aproximação: "..tostring(BossFarm.approachSpeed),
         "Boss risco atual: "..tostring(BossFarm.riskScore),
         "Boss destino seguro: "..tostring(BossFarm.safePoint),
         "Boss leituras de perigo: "..tostring(BossFarm.scanCount),
@@ -4126,6 +4163,7 @@ end
 refreshBossList()
 Hub.CreateToggle(secBoss,"Auto Boss",BossFarm.setAuto,"crown",false)
 Hub.CreateDropdown(secBoss,"Modo de Esquiva",{"Equilibrado","Agressivo","Defensivo"},BossFarm.setDodgeMode)
+Hub.CreateDropdown(secBoss,"Velocidade para ir ao Boss",{"Suave (180)","Lento (120)","Normal (280)","Rápido (400)"},BossFarm.setApproachSpeed)
 Hub.CreateDropdown(secBoss,"Velocidade de retorno",{"Normal (360)","Suave (220)","Rápido (550)"},BossFarm.setReturnSpeed)
 Hub.CreateButton(secBoss,"Atualizar lista de bosses",refreshBossList,"refresh-cw")
 Hub.CreateButton(secBoss,"Status do Auto Boss",BossFarm.showStatus,"eye")
