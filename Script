@@ -4338,19 +4338,20 @@ local VoxHaki = (function()
         local x=math.floor(p.X+size.X*.5)
         local y=math.floor(p.Y+size.Y*.5)
         local ok=false
-        if miniVim then
+        if type(firesignal)=="function" then
+            ok=pcall(function() firesignal(button.MouseButton1Down) end)
+        end
+        if not ok and miniVim then
             ok=pcall(function()
                 miniVim:SendMouseButtonEvent(x,y,0,true,game,0)
                 miniVim:SendMouseButtonEvent(x,y,0,false,game,0)
             end)
         end
-        if not ok and type(firesignal)=="function" then
-            ok=pcall(function() firesignal(button.MouseButton1Down) end)
-        end
         if ok then V.miniInputs+=1 end
         return ok
     end
     local function miniInput(key,mode)
+        if key=="A" then key="Left" elseif key=="D" then key="Right" end
         local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
         local btn
         if gui then
@@ -4431,8 +4432,8 @@ local VoxHaki = (function()
         for _,target in ipairs(layer:GetChildren()) do
             if target.Name:match("^Target%d+$") then
                 local hit=target:FindFirstChild("Hit")
-                if hit and not session.seen[hit] and tap(hit) then
-                    session.seen[hit]=true
+                if hit and os.clock()-(session.seen[hit] or -100)>.18 and tap(hit) then
+                    session.seen[hit]=os.clock()
                 end
             end
         end
@@ -4458,7 +4459,7 @@ local VoxHaki = (function()
                 local when=mode=="Spar" and math.max(spawn+.1,spawn+travel-.12)
                     or spawn+travel-(info.Touch and .06 or .015)
                 if now>=when then
-                    local key=note.Key
+                    local key=note.Key or note.Side
                     if type(key)=="string" and miniInput(key,mode) then
                         V.miniStatus="Auto "..mode.." | nota "..session.next.."/"..#schedule
                         session.next+=1
@@ -4518,6 +4519,7 @@ local VoxHaki = (function()
         end
         if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
             State.AutoFarmQuest or FeatureState.islandTraveling then
+            restoreHakiFishing()
             V.fishStatus="Pesca do Haki pausada por outro farm"
             return
         end
@@ -4687,7 +4689,7 @@ local VoxHaki = (function()
         local oceanLevel=oceanHit and oceanHit.Material==Enum.Material.Water
             and oceanHit.Position.Y or nil
         local nearest,best=nil,math.huge
-        for _,radius in ipairs({10,18,28,40,55,75,100,130}) do
+        for _,radius in ipairs({0,10,18,28,40,55,75,100,130}) do
             for n=0,15 do
                 local angle=n*math.pi/8
                 local x=marker.X+math.cos(angle)*radius
