@@ -4007,12 +4007,12 @@ end)()
 local VoxHaki = (function()
     local V={
         autoArmor=false,autoSense=false,autoUnlock=false,autoMastery=false,
-        autoTrack=false,status="Desligado",lastRequest=0,lastToggle={},
+        fullAuto=true,autoTrack=false,status="Auto Haki Completo ativado",lastRequest=-100,lastToggle={},
         autoMini=false,autoMiniStart=false,autoMiniFishing=false,
         managedFish=false,savedFishing=false,savedCastFishing=false,fishStatus="-",
         miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
-        miniLastStart=0,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
+        miniLastStart=-100,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
         lastTracked=nil,requests=0,lastError=0
     }
     local QUESTS={"Vox Sense Training","Vox Armor Training","Vox Sense Mastery","Vox Armor Mastery"}
@@ -4160,7 +4160,7 @@ local VoxHaki = (function()
         return nil
     end
     local function tryRequest()
-        if not V.autoUnlock and not V.autoMastery then return end
+        if not V.fullAuto and not V.autoUnlock and not V.autoMastery then return end
         if os.clock()-V.lastRequest<35 then return end
         if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
             FeatureState.islandTraveling or emTransicao() then
@@ -4177,18 +4177,18 @@ local VoxHaki = (function()
         local quest=activeQuest(data)
         if quest then
             V.status="Treino em andamento: "..quest
-            if V.autoTrack and V.lastTracked~=quest and QuestEvent then
+            if (V.fullAuto or V.autoTrack) and V.lastTracked~=quest and QuestEvent then
                 enviarQuest("Track",quest)
                 V.lastTracked=quest
             end
             return
         end
         local action,kind,price,minLevel,description
-        if V.autoUnlock and sense<1 then
+        if (V.fullAuto or V.autoUnlock) and sense<1 then
             action,kind,price,minLevel,description="AcceptSense","Kenbushoku",12500,145,"Vox Sense"
-        elseif V.autoUnlock and armor<1 and sense>0 then
+        elseif (V.fullAuto or V.autoUnlock) and armor<1 and sense>0 then
             action,kind,price,minLevel,description="AcceptArmor","Busoshoku",12500,145,"Vox Armor"
-        elseif V.autoMastery and sense>0 and armor>0 then
+        elseif (V.fullAuto or V.autoMastery) and sense>0 and armor>0 then
             local best
             for _,power in ipairs({"Kenbushoku","Busoshoku"}) do
                 local lv=power=="Kenbushoku" and sense or armor
@@ -4493,7 +4493,7 @@ local VoxHaki = (function()
         end
     end
     local function updateHakiFishing()
-        if not V.autoMiniFishing then
+        if not V.fullAuto and not V.autoMiniFishing then
             restoreHakiFishing()
             return
         end
@@ -4522,7 +4522,7 @@ local VoxHaki = (function()
         if not V.autoMiniFishing then restoreHakiFishing() end
     end
     local function tryStartHakiMini()
-        if not V.autoMini or not V.autoMiniStart or
+        if not (V.fullAuto or V.autoMini) or not (V.fullAuto or V.autoMiniStart) or
             os.clock()-V.miniLastStart<10 then return end
         if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
             FeatureState.islandTraveling or State.AutoFarmQuest or
@@ -4588,14 +4588,31 @@ local VoxHaki = (function()
         if V.autoMiniStart then V.miniLastStart=0 end
     end
     function V.showMini()
-        notify("Auto minigame: "..tostring(V.autoMini)..
-            " | Pesca Vox: "..tostring(V.autoMiniFishing)..
-            " | Início perto do treino: "..tostring(V.autoMiniStart)..
+        notify("Auto Haki Completo: "..tostring(V.fullAuto)..
+            " | Auto minigame: "..tostring(V.fullAuto or V.autoMini)..
+            " | Pesca Vox: "..tostring(V.fullAuto or V.autoMiniFishing)..
+            " | Início perto do treino: "..tostring(V.fullAuto or V.autoMiniStart)..
             " | Comandos enviados: "..V.miniInputs..
             " | Inícios pedidos: "..V.miniStarts..
             " | "..V.miniStatus)
     end
+    function V.setFullAuto(v)
+        V.fullAuto=(v==true)
+        if V.fullAuto then
+            V.lastRequest=-100
+            V.miniLastStart=-100
+            V.miniStatus="Auto Haki Completo: procurando treinos"
+            V.status="Auto Haki Completo: ligado"
+            minigameInfo()
+            watchMinigame()
+        else
+            V.miniStatus=V.autoMini and "Auto MiniGames individual ligado" or "Auto Haki Completo desligado"
+            V.status="Auto Haki Completo: desligado"
+            restoreHakiFishing()
+        end
+    end
     local function stopMini()
+        V.fullAuto=false
         V.autoMini=false
         V.autoMiniStart=false
         V.miniSession=nil
@@ -4608,7 +4625,7 @@ local VoxHaki = (function()
     env.GRHubVoxMinigameStop=stopMini
     task.spawn(function()
         while running() do
-            if V.autoMini then
+            if V.fullAuto or V.autoMini then
                 local ok,err=pcall(function()
                     watchMinigame()
                     local active=minigameActive()
@@ -4625,15 +4642,15 @@ local VoxHaki = (function()
                     warn("[GR Hub Vox Minigames]",err)
                 end
             end
-            task.wait(V.autoMini and .025 or .85)
+            task.wait((V.fullAuto or V.autoMini) and .025 or .85)
         end
         stopMini()
     end)
     task.spawn(function()
         while running() do
             local ok,err=pcall(function()
-                if V.autoArmor then activate("Busoshoku") end
-                if V.autoSense then activate("Kenbushoku") end
+                if V.fullAuto or V.autoArmor then activate("Busoshoku") end
+                if V.fullAuto or V.autoSense then activate("Kenbushoku") end
                 tryRequest()
                 updateHakiFishing()
             end)
@@ -4642,7 +4659,7 @@ local VoxHaki = (function()
                 V.status="Erro Vox: "..tostring(err)
                 warn("[GR Hub Vox]",err)
             end
-            task.wait((V.autoArmor or V.autoSense or V.autoUnlock or V.autoMastery or V.autoMiniFishing) and .75 or 2)
+            task.wait((V.fullAuto or V.autoArmor or V.autoSense or V.autoUnlock or V.autoMastery or V.autoMiniFishing) and .75 or 2)
         end
     end)
     return V
@@ -4654,7 +4671,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.7 - VOX MINIGAMES AUTO",
+        "GR HUB V10.8 - AUTO HAKI COMPLETO",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -4668,15 +4685,16 @@ local function copiarDebug()
         "Boss modo esquiva: "..tostring(BossFarm.dodgeMode),
         "Boss velocidade retorno: "..tostring(BossFarm.returnSpeed),
         "Boss velocidade aproximação: "..tostring(BossFarm.approachSpeed),
-        "Vox Sense auto: "..tostring(VoxHaki.autoSense),
-        "Vox Armor auto: "..tostring(VoxHaki.autoArmor),
-        "Vox Auto Iniciar: "..tostring(VoxHaki.autoUnlock),
-        "Vox Auto Mastery: "..tostring(VoxHaki.autoMastery),
+        "Vox Auto Haki Completo: "..tostring(VoxHaki.fullAuto),
+        "Vox Sense auto: "..tostring(VoxHaki.fullAuto or VoxHaki.autoSense),
+        "Vox Armor auto: "..tostring(VoxHaki.fullAuto or VoxHaki.autoArmor),
+        "Vox Auto Iniciar: "..tostring(VoxHaki.fullAuto or VoxHaki.autoUnlock),
+        "Vox Auto Mastery: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMastery),
         "Vox status: "..tostring(VoxHaki.status),
         "Vox pedidos enviados: "..tostring(VoxHaki.requests),
-        "Vox MiniGames auto: "..tostring(VoxHaki.autoMini),
-        "Vox MiniGames iniciar: "..tostring(VoxHaki.autoMiniStart),
-        "Vox MiniGames pesca: "..tostring(VoxHaki.autoMiniFishing),
+        "Vox MiniGames auto: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMini),
+        "Vox MiniGames iniciar: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMiniStart),
+        "Vox MiniGames pesca: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMiniFishing),
         "Vox MiniGames pesca status: "..tostring(VoxHaki.fishStatus),
         "Vox MiniGames entradas: "..tostring(VoxHaki.miniInputs),
         "Vox MiniGames status: "..tostring(VoxHaki.miniStatus),
@@ -4870,6 +4888,19 @@ local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
 local hakiPanel=Hub.CreateSection("Player","HAKI / VOX")
+local hakiFullButton
+local function updateHakiFullButton()
+    if hakiFullButton then
+        local label=VoxHaki.fullAuto and "Auto Haki Completo: LIGADO (usa Gold)" or "Auto Haki Completo: DESLIGADO"
+        hakiFullButton.Text="       "..label
+        hakiFullButton:SetAttribute("GRSearchText","Auto Haki Completo "..label)
+    end
+end
+hakiFullButton=Hub.CreateButton(hakiPanel,"Auto Haki Completo: LIGADO (usa Gold)",function()
+    VoxHaki.setFullAuto(not VoxHaki.fullAuto)
+    updateHakiFullButton()
+end,"zap")
+updateHakiFullButton()
 Hub.CreateToggle(hakiPanel,"Auto ativar Vox Armor",VoxHaki.setArmor)
 Hub.CreateToggle(hakiPanel,"Auto ativar Vox Sense",VoxHaki.setSense)
 Hub.CreateToggle(hakiPanel,"Auto iniciar treino Haki (usa Gold)",VoxHaki.setUnlock)
@@ -4900,6 +4931,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.7] Auto Vox MiniGames: Dodge, Spar e StoneBreak; outras funções preservadas")
+print("[GR Hub V10.8] Auto Haki Completo ligado: minigames, quest, Vox Armor/Sense e pesca de treino")
 
 end)()
