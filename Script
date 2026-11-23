@@ -4022,6 +4022,7 @@ local VoxHaki = (function()
         miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
         miniKeyAttempts=0,miniKeyFailures=0,miniLastKey="-",miniInputMethod="-",miniMode="-",
+        stoneIndex=nil,stonePosition=nil,stoneDistance=nil,stoneRequests=0,stoneStatus="-",
         miniLastStart=-100,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
         lastTracked=nil,requests=0,lastError=0
     }
@@ -4180,7 +4181,7 @@ local VoxHaki = (function()
         local data=lerDados()
         local char,root,hum=character()
         if not data or not root or not hum or hum.Health<=0 then
-            V.status="Aguardando dados do jogador"
+            if not V.activeQuest then V.status="Aguardando dados do jogador" end
             return
         end
         local sense,armor=levels(data)
@@ -4459,7 +4460,8 @@ local VoxHaki = (function()
         return active
     end
     local function doStoneClicks()
-        if not hakiObjective("StoneBreak") then
+        if not (V.fullAuto and (V.activeQuest=="Vox Armor Mastery"
+            or V.activeQuest=="Vox Armor Training")) and not hakiObjective("StoneBreak") then
             V.miniStatus="StoneBreak sem missão Vox ativa"
             return
         end
@@ -4661,56 +4663,89 @@ local VoxHaki = (function()
         if not V.autoMiniFishing then restoreHakiFishing() end
     end
     local function tryStartHakiMini()
-        if not (V.fullAuto or V.autoMini) or not (V.fullAuto or V.autoMiniStart) or
-            os.clock()-V.miniLastStart<10 then return end
+        if not (V.fullAuto or V.autoMini) or not (V.fullAuto or V.autoMiniStart)
+            or os.clock()-V.miniLastStart<4 then return end
         if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
-            FeatureState.islandTraveling or State.AutoFarmQuest or
-            emTransicao() then return end
+            FeatureState.islandTraveling or State.AutoFarmQuest or emTransicao() then return end
         if V.miniManager and V.miniManager.Active then return end
         local _,root,hum=character()
         if not root or not hum or hum.Health<=0 then return end
-        if hakiObjective("Dodge") then
-            local trainer=trainerPosition()
-            if trainer and (root.Position-trainer).Magnitude<=22 and
-                dadosModulo and dadosModulo.Network then
-                V.miniLastStart=os.clock()
-                if network("StartDodge") then
-                    V.miniStarts+=1
-                    V.miniStatus="Askard: pedindo início do Dodge"
+        local data=lerDados()
+        local quest=activeQuest(data)
+        local objective=V.activeObjective
+        local stoneQuest=(quest=="Vox Armor Mastery")
+            or (quest=="Vox Armor Training" and
+                ((type(objective)=="string" and objective:find("^Break_Stone_HK_"))
+                or hakiObjective("StoneBreak")))
+        if stoneQuest then
+            local index
+            if quest=="Vox Armor Mastery" then
+                local level=tonumber(data and data.Abilitys and data.Abilitys.Busoshoku) or 0
+                local step=trainingStep("Busoshoku",level+1)
+                index=step and tonumber(step.Stone)
+            else
+                index=type(objective)=="string" and tonumber(objective:match("^Break_Stone_HK_(%d+)$"))
+                if not index then
+                    for i=1,9 do
+                        if objectiveActive("Break_Stone_HK_"..i) then index=i;break end
+                    end
                 end
+            end
+            V.stoneIndex=index
+            if not index then
+                V.stoneStatus="Nenhuma pedra definida para nível atual do Vox Armor"
+                V.miniStatus=V.stoneStatus
+                return
+            end
+            local map=workspace:FindFirstChild("Map")
+            local areas=map and map:FindFirstChild("Areas")
+            local skull=areas and areas:FindFirstChild("Skull Island")
+            local folder=skull and (skull:FindFirstChild("Quest_Stones_HK",true) or skull)
+            local obj=folder and folder:FindFirstChild("Stone_HK_"..index,true)
+            if obj and not obj:IsA("BasePart") then obj=nil end
+            V.stonePosition=obj and obj.Position or nil
+            if not obj then
+                V.stoneStatus="Pedra "..index.." não carregada em Skull Island"
+                V.miniStatus=V.stoneStatus
+                return
+            end
+            local distance=(root.Position-obj.Position).Magnitude
+            V.stoneDistance=math.floor(distance)
+            if distance>13.5 then
+                V.stoneStatus="Indo até pedra "..index.." ("..math.floor(distance).." studs)"
+                V.miniStatus=V.stoneStatus
+                return
+            end
+            if not dadosModulo or not dadosModulo.Network then
+                V.stoneStatus="Network indisponível para pedra "..index
+                V.miniStatus=V.stoneStatus
+                return
+            end
+            V.miniLastStart=os.clock()
+            local ok,err=pcall(function()
+                dadosModulo.Network:FireServer("QuestZones","Break_Stone_HK_"..index,"Punch")
+            end)
+            if ok then
+                V.miniStarts+=1
+                V.stoneRequests+=1
+                V.stoneStatus="Pedido de StoneBreak enviado para pedra "..index
+                V.miniStatus=V.stoneStatus
+            else
+                V.stoneStatus="Erro StoneBreak: "..tostring(err)
+                V.miniStatus=V.stoneStatus
             end
             return
         end
-        if not hakiObjective("StoneBreak") then return end
-        local map=workspace:FindFirstChild("Map")
-        local areas=map and map:FindFirstChild("Areas")
-        local skull=areas and areas:FindFirstChild("Skull Island")
-        if not skull or not dadosModulo or not dadosModulo.Network then return end
-        local toCheck={}
-        for i=1,12 do
-            local id="Break_Stone_HK_"..i
-            if objectiveActive(id) then table.insert(toCheck,i) end
-        end
-        if #toCheck==0 and objectiveActive("Train_VoxArmor_VX") then
-            local data=lerDados()
-            local level=tonumber(data and data.Abilitys and data.Abilitys.Busoshoku) or 0
-            local steps={ [1]=10,[2]=11,[3]=12 }
-            local idx=steps[level] or 10
-            table.insert(toCheck,idx)
-        end
-        for _,i in ipairs(toCheck) do
-            local obj=skull:FindFirstChild("Stone_HK_"..i,true)
-            if obj and obj:IsA("BasePart") and obj.Transparency<.95
-                and (root.Position-obj.Position).Magnitude<14 then
-                V.miniLastStart=os.clock()
-                local ok=pcall(function()
-                    dadosModulo.Network:FireServer("QuestZones","Break_Stone_HK_"..i,"Punch")
-                end)
-                if ok then
-                    V.miniStarts+=1
-                    V.miniStatus="Pedra "..i..": iniciando treino"
-                end
-                return
+        if quest~="Vox Sense Training" and quest~="Vox Sense Mastery"
+            and quest~="Vox Armor Training" then return end
+        if not hakiObjective("Dodge") then return end
+        local trainer=trainerPosition()
+        if trainer and (root.Position-trainer).Magnitude<=22 and dadosModulo
+            and dadosModulo.Network then
+            V.miniLastStart=os.clock()
+            if network("StartDodge") then
+                V.miniStarts+=1
+                V.miniStatus="Askard: pedindo Dodge"
             end
         end
     end
@@ -5202,9 +5237,15 @@ local VoxHaki = (function()
                 local step=trainingStep("Busoshoku",lv+1)
                 n=step and step.Stone or 10
             end
-            if moveHakiTo(stonePoint(n),10,"indo até pedra "..n) then
-                tryStartHakiMini()
-                V.status="Auto Haki: quebrando pedra "..n
+            if n then
+                V.stoneIndex=n
+                local pos=stonePoint(n)
+                if moveHakiTo(pos,10,"indo até pedra "..n) then
+                    tryStartHakiMini()
+                    V.status="Auto Haki: treinando Vox Armor na pedra "..n
+                end
+            else
+                V.status="Auto Haki: nenhuma pedra do Vox Armor disponível no nível atual"
             end
         elseif objective=="Dodge_Stones_HK" or objective=="Dodge_Blindfold_HK"
             or objective=="Spar_Askard_HK" or objective=="Train_VoxSense_VX" then
@@ -5341,7 +5382,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V11.2 - AUTO HAKI (BOAR FIX)",
+        "GR HUB V11.3 - VOX ARMOR STONEBREAK",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5386,6 +5427,11 @@ local function copiarDebug()
         "Vox MiniGames ultima tecla: "..tostring(VoxHaki.miniLastKey),
         "Vox MiniGames metodo: "..tostring(VoxHaki.miniInputMethod),
         "Vox MiniGames status: "..tostring(VoxHaki.miniStatus),
+        "Vox StoneBreak pedra: "..tostring(VoxHaki.stoneIndex),
+        "Vox StoneBreak posicao: "..tostring(VoxHaki.stonePosition),
+        "Vox StoneBreak distancia: "..tostring(VoxHaki.stoneDistance),
+        "Vox StoneBreak pedidos: "..tostring(VoxHaki.stoneRequests),
+        "Vox StoneBreak status: "..tostring(VoxHaki.stoneStatus),
         "Boss risco atual: "..tostring(BossFarm.riskScore),
         "Boss destino seguro: "..tostring(BossFarm.safePoint),
         "Boss leituras de perigo: "..tostring(BossFarm.scanCount),
