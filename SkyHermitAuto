@@ -1,0 +1,314 @@
+return function(C)
+    local R={
+        enabled=false,status="Desligado",stage="Parado",flag=0,flagsDone=0,
+        totalFlags=7,requests=0,failures=0,lastAction=-100,lastTravel=-100,
+        target=nil,targetDistance=nil,registryKey=nil,questActive=false,
+        geppo=0,completed=false,courseName="Heavenstep Mountain",
+        lastProgress=-100,attemptsAtFlag=0
+    }
+    local workspace=game:GetService("Workspace")
+    local COURSE="Heavenstep Mountain"
+    local QUEST="The Sky Hermit"
+    local function char()
+        local model,root,hum=C.character()
+        return model,root,hum,root and hum and hum.Health>0
+    end
+    local function norm(x)
+        return tostring(x or ""):lower():gsub("[^%w]","")
+    end
+    local function data()
+        return C.lerDados()
+    end
+    local function network(...)
+        local mod=C.dadosModulo
+        if not mod or not mod.Network then
+            R.status="Network indisponível"
+            return false
+        end
+        local args={...}
+        local ok,err=pcall(function()
+            mod.Network:FireServer(table.unpack(args))
+        end)
+        if ok then R.requests+=1
+        else R.failures+=1;R.status="Erro remoto: "..tostring(err) end
+        return ok
+    end
+    local function sendEvery(interval,...)
+        if os.clock()-R.lastAction<interval then return false end
+        R.lastAction=os.clock()
+        return network(...)
+    end
+    local function course()
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local int=ignore and ignore:FindFirstChild("Int")
+        local parkour=int and int:FindFirstChild("Parkour")
+        return parkour and parkour:FindFirstChild(COURSE)
+    end
+    local function orderedFlags(folder)
+        local list={}
+        if not folder then return list end
+        for _,obj in ipairs(folder:GetChildren()) do
+            local number=tonumber(obj.Name)
+            if obj:IsA("Model") and number then
+                table.insert(list,{number=number,model=obj})
+            end
+        end
+        table.sort(list,function(a,b) return a.number<b.number end)
+        return list
+    end
+    local function keyFor(index)
+        local settings=C.mainModulo and C.mainModulo.ParkourSettings
+        if settings and type(settings.RegistryKey)=="function" then
+            local ok,k=pcall(settings.RegistryKey,COURSE,index)
+            if ok and type(k)=="string" then return k end
+        end
+        return ("Parkour_%s_%s"):format(COURSE,index)
+    end
+    local function currentFlag(d,folder)
+        local registry=d and d.Registry or {}
+        local list=orderedFlags(folder)
+        local done=0
+        local nextFlag=nil
+        for _,entry in ipairs(list) do
+            local key=keyFor(entry.number)
+            if registry[key]==true then
+                done+=1
+            elseif not nextFlag then
+                nextFlag=entry
+                R.registryKey=key
+                break
+            end
+        end
+        R.flagsDone=done
+        if not nextFlag and #list>0 then R.registryKey=nil end
+        return nextFlag,list
+    end
+    local function stopRoute()
+        local route=C.getRoute()
+        if route and route.chave=="SkyHermitAuto" then C.liberarVoo() end
+    end
+    local function goTo(point,radius,description)
+        if typeof(point)~="Vector3" then
+            R.status="Posição indisponível: "..description
+            stopRoute()
+            return false
+        end
+        local _,root,hum,valid=char()
+        if not valid then return false end
+        R.target=point
+        local distance=(root.Position-point).Magnitude
+        R.targetDistance=math.floor(distance)
+        if distance>radius then
+            C.definirDestino(point,"SkyHermitAuto")
+            R.status=description.." ("..math.floor(distance).." studs)"
+            return false
+        end
+        stopRoute()
+        return true
+    end
+    local lastNPCScan=-100
+    local cachedNPC={}
+    local function npc(name)
+        if os.clock()-lastNPCScan<1.3 and cachedNPC[name] and
+            cachedNPC[name].Parent then return cachedNPC[name] end
+        lastNPCScan=os.clock()
+        local sources={}
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local inside=ignore and ignore:FindFirstChild("Int")
+        if inside then table.insert(sources,inside) end
+        local play=workspace:FindFirstChild("Playability")
+        if play then table.insert(sources,play) end
+        local best=nil
+        local _,root=char()
+        local bestDist=math.huge
+        for _,source in ipairs(sources) do
+            for _,obj in ipairs(source:GetDescendants()) do
+                if obj:IsA("Model") and
+                    (norm(obj.Name)==norm(name) or
+                    norm(obj:GetAttribute("NPCName"))==norm(name)) then
+                    local point=C.posicaoDe(obj)
+                    if point then
+                        local distance=root and (root.Position-point).Magnitude or 0
+                        if distance<bestDist then best=obj;bestDist=distance end
+                    end
+                end
+            end
+        end
+        if best then cachedNPC[name]=best end
+        return best
+    end
+    local function interestPoint(name)
+        local points=C.mainModulo and C.mainModulo.InterestPoints
+        if points and type(points.Get)=="function" then
+            local ok,value=pcall(function() return points:Get(name) end)
+            if ok then return C.posicaoDe(value) end
+        end
+        return nil
+    end
+    local function npcPosition(name)
+        local model=npc(name)
+        return (model and C.posicaoDe(model)) or
+            interestPoint("Character_"..name),model
+    end
+    local function travel(island)
+        local now=os.clock()
+        local current=tostring(C.localAtual() or "")
+        if norm(current)==norm(island) then return false end
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        local area=areas and areas:FindFirstChild(island)
+        if not area then
+            R.status="Ilha não carregada: "..island
+            return true
+        end
+        local _,root,hum,valid=char()
+        if not valid then return true end
+        local center=area:GetAttribute("MapCenter")
+        if typeof(center)=="Vector3" and (root.Position-center).Magnitude<600 then return false end
+        if C.IslandTeleport.traveling then
+            R.status="Viajando para "..island
+            return true
+        end
+        if now-R.lastTravel>28 then
+            R.lastTravel=now
+            C.IslandTeleport.choose(island)
+            C.IslandTeleport.go()
+            R.status="Viajando para "..island
+        else
+            R.status="Aguardando viagem para "..island
+        end
+        return true
+    end
+    local function questProgress(d)
+        local active=d and d.Quests and d.Quests.Actives
+        local rows=active and active[QUEST]
+        R.questActive=type(rows)=="table"
+        R.geppo=tonumber(d and d.Abilitys and d.Abilitys.Geppo) or 0
+        if not R.questActive then return nil,0 end
+        local raw=rows[1] or {}
+        return rows,tonumber(raw[1]) or 0
+    end
+    local function isDone(d)
+        return (tonumber(d and d.Abilitys and d.Abilitys.Geppo) or 0)>0
+    end
+    local function step()
+        if not R.enabled or not C.running() then return end
+        if C.State.AutoSecondary or C.State.AutoFarmQuest or C.State.AutoFarmFruit
+            or C.State.AutoBoss or C.State.AutoRaid or C.State.AutoSeaBeast
+            or C.State.AutoHaki then
+            R.status="Sky Hermit pausado: outra automação ativa"
+            stopRoute()
+            return
+        end
+        local _,root,hum,valid=char()
+        local d=data()
+        if not d or not valid then R.status="Aguardando personagem e dados";return end
+        R.completed=isDone(d)
+        local rows,questFlags=questProgress(d)
+        if R.completed then
+            R.stage="Concluído"
+            R.flagsDone=R.totalFlags
+            R.status="Heavenstep desbloqueado!"
+            stopRoute()
+            return
+        end
+        if not rows then
+            R.stage="Aceitar missão"
+            R.flag=0
+            if travel("Solmar Island") then return end
+            local point,model=npcPosition("Sky Hermit")
+            if not goTo(point,7,"Indo ao Sky Hermit em Solmar") then return end
+            if sendEvery(5,"Elysium_Converse","SkyHermit","Accept") then
+                R.status="Solicitando missão Sky Hermit (custo: 2.500 Gold)"
+            end
+            return
+        end
+        local parkour=course()
+        local flags=orderedFlags(parkour)
+        if #flags==0 and questFlags<7 then
+            R.stage="Procurar Heavenstep Mountain"
+            if travel(COURSE) then return end
+            R.status="Aguardando carregar as bandeiras em IgnoreList.Int.Parkour.Heavenstep Mountain"
+            return
+        end
+        local flag,list=currentFlag(d,parkour)
+        R.flagsDone=math.max(R.flagsDone,math.min(7,questFlags))
+        if flag and questFlags<7 then
+            R.stage="Ativar bandeiras"
+            R.flag=flag.number
+            local pos=flag.model:GetPivot().Position
+            if not goTo(pos,6,"Indo à bandeira "..flag.number.."/7") then return end
+            if R.lastFlag~=flag.number then
+                R.lastFlag=flag.number
+                R.lastProgress=os.clock()
+                R.attemptsAtFlag=0
+            end
+            if os.clock()-R.lastAction>1.2 then
+                if sendEvery(1.2,"Parkour","Activate",COURSE,flag.number) then
+                    R.attemptsAtFlag+=1
+                    R.status="Ativando bandeira "..flag.number.."/7 (tentativa "..R.attemptsAtFlag..")"
+                end
+            end
+            if os.clock()-R.lastProgress>13 then
+                R.status="Bandeira "..flag.number.." sem progresso após "..R.attemptsAtFlag..
+                    " pedidos; conferir distância/ordem no servidor"
+            end
+            return
+        end
+        R.stage="Falar no topo"
+        R.flag=7
+        local point,model=npcPosition("Sky Hermit Summit")
+        if not point then
+            local questInfo=C.mainModulo and C.mainModulo.QuestsInfo and C.mainModulo.QuestsInfo[QUEST]
+            local objective=questInfo and questInfo.SubQuests and
+                questInfo.SubQuests[2] and questInfo.SubQuests[2].Objectives[1]
+            if objective and type(objective.InterestPoint)=="function" then
+                local ok,p=pcall(objective.InterestPoint)
+                if ok then point=C.posicaoDe(p) end
+            end
+        end
+        if not goTo(point,7,"Indo ao Sky Hermit no topo") then return end
+        if sendEvery(4,"Elysium_Converse","SkyHermitSummit","Learn") then
+            R.status="Aprendendo Heavenstep com Sky Hermit Summit"
+        end
+    end
+    function R.setAuto(v)
+        R.enabled=v==true
+        C.State.AutoSkyHermit=R.enabled
+        if R.enabled then
+            if C.State.AutoSecondary then C.SecondaryQuestAuto.setAuto(false) end
+            if C.State.AutoFarmQuest then C.definirFarm(false) end
+            if C.State.AutoFarmFruit then C.definirFarmFruta(false) end
+            if C.State.AutoHaki then C.VoxHaki.setFullAuto(false) end
+            if C.State.AutoBoss then C.BossFarm.setAuto(false) end
+            if C.State.AutoSeaBeast then C.Sea.setAuto(false) end
+            if C.State.AutoRaid then C.Raid.setAuto(false) end
+            R.stage="Procurando missão"
+            R.status="Auto Sky Hermit ligado"
+            R.lastAction=-100
+            R.attemptsAtFlag=0
+        else
+            stopRoute()
+            R.stage="Parado"
+            R.status="Desligado"
+        end
+    end
+    function R.stop()
+        R.setAuto(false)
+    end
+    task.spawn(function()
+        while C.running() do
+            if R.enabled then
+                local ok,err=pcall(step)
+                if not ok then
+                    R.failures+=1
+                    R.status="Erro Sky Hermit: "..tostring(err)
+                    if R.failures%5==1 then warn("[GR Auto Sky Hermit]",err) end
+                end
+            end
+            task.wait(R.enabled and .18 or 1.1)
+        end
+        R.stop()
+    end)
+    return R
+end
