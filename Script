@@ -4003,13 +4003,294 @@ local BossFarm = (function()
     return B
 end)()
 
+local VoxHaki = (function()
+    local V={
+        autoArmor=false,autoSense=false,autoUnlock=false,autoMastery=false,
+        autoTrack=true,status="Desligado",lastRequest=0,lastToggle={},
+        lastTracked=nil,requests=0,lastError=0
+    }
+    local QUESTS={"Vox Sense Training","Vox Armor Training","Vox Sense Mastery","Vox Armor Mastery"}
+    local function notify(message)
+        print("[GR Hub Vox] "..tostring(message))
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification",{
+                Title="GR Hub | Haki / Vox",Text=tostring(message),Duration=7
+            })
+        end)
+    end
+    local function getProgress()
+        local mods=RS:FindFirstChild("Modules")
+        local essentials=mods and mods:FindFirstChild("Essentials")
+        local quests=essentials and essentials:FindFirstChild("QuestSystem")
+        if quests then
+            local ok,obj=pcall(require,quests)
+            if ok and obj and obj.IsClient and type(obj.IsClient.GetProgress)=="function" then
+                local success,p=pcall(function() return obj.IsClient:GetProgress() end)
+                if success and type(p)=="table" then return p end
+            end
+        end
+        return nil
+    end
+    local function activeQuest(data)
+        local progress=getProgress()
+        local actives=progress and progress.Quests
+        if type(actives)~="table" then
+            local d=data and data.Quests
+            actives=d and (d.Actives or d.Quests)
+        end
+        if type(actives)=="table" then
+            for _,name in ipairs(QUESTS) do
+                if actives[name]~=nil and actives[name]~=false then
+                    return name
+                end
+            end
+        end
+        return nil
+    end
+    local function storyObjective(kind)
+        local progress=getProgress()
+        local quests=mainModulo and mainModulo.QuestsUtils
+        if not progress or not quests or type(quests.IsObjectiveActive)~="function" then return false end
+        local name=kind=="Kenbushoku" and "Learn_VoxSense_HK" or "Learn_VoxArmor_HK"
+        local ok,result=pcall(quests.IsObjectiveActive,progress,name)
+        return ok and result==true
+    end
+    local function levels(data)
+        local a=data and data.Abilitys or {}
+        return tonumber(a.Kenbushoku) or 0,tonumber(a.Busoshoku) or 0,
+            tonumber(a.Soru) or 0,tonumber(a.Geppo) or 0
+    end
+    local function locked(char)
+        local lock=mainModulo and mainModulo.PowersLock
+        if lock and type(lock.IsLocked)=="function" then
+            local ok,value=pcall(lock.IsLocked,char)
+            if ok then return value==true end
+        end
+        return false
+    end
+    local function trainerPosition()
+        local points=mainModulo and mainModulo.InterestPoints
+        if points and type(points.Get)=="function" then
+            for _,key in ipairs({"Character_Askard","Character_Suspicious Man_Campfire"}) do
+                local ok,obj=pcall(function() return points:Get(key) end)
+                if ok then
+                    local point=posicaoDe(obj)
+                    if point then return point end
+                end
+            end
+        end
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local inner=ignore and ignore:FindFirstChild("Int")
+        local scopes={
+            inner and inner:FindFirstChild("NPCs"),
+            ignore and ignore:FindFirstChild("NPCs"),
+            workspace:FindFirstChild("Playability")
+        }
+        for _,folder in ipairs(scopes) do
+            if folder then
+                for _,obj in ipairs(folder:GetDescendants()) do
+                    if obj:IsA("Model") then
+                        local name=obj.Name:lower()
+                        if name=="askard" or name:find("suspicious man",1,true) then
+                            local point=posicaoDe(obj)
+                            if point then return point end
+                        end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+    local function canPay(cost)
+        local utils=mainModulo and mainModulo.MonetizationUtils
+        if not utils or type(utils.CanPurchase)~="function" then return false end
+        local ok,value=pcall(function() return utils:CanPurchase(nil,"Gold",cost) end)
+        return ok and value==true
+    end
+    local function network(action,kind)
+        if not dadosModulo or not dadosModulo.Network then
+            V.status="Network do jogo não disponível"
+            return false
+        end
+        local ok=pcall(function()
+            if kind then
+                dadosModulo.Network:FireServer("Elysium_Converse","Askard",action,kind)
+            else
+                dadosModulo.Network:FireServer("Elysium_Converse","Askard",action)
+            end
+        end)
+        if ok then
+            V.requests+=1
+            V.lastRequest=os.clock()
+        end
+        return ok
+    end
+    local function activate(kind)
+        local char,root,hum=character()
+        if not char or not root or not hum or hum.Health<=0 or locked(char) then return end
+        local d=lerDados()
+        local level=tonumber(d and d.Abilitys and d.Abilitys[kind]) or 0
+        if level<1 or char:GetAttribute(kind)~=nil then return end
+        local now=os.clock()
+        if now-(V.lastToggle[kind] or 0)<3 then return end
+        if kind=="Kenbushoku" and char:GetAttribute("BreakKenbushoku")~=nil then
+            return
+        end
+        V.lastToggle[kind]=now
+        if dadosModulo and dadosModulo.Network then
+            pcall(function() dadosModulo.Network:FireServer(kind,"Toggle") end)
+        end
+    end
+    local function trainingStep(kind,nextLevel)
+        local training=mainModulo and mainModulo.VoxTraining
+        if training and type(training.GetStep)=="function" then
+            local ok,step=pcall(training.GetStep,kind,nextLevel)
+            if ok and type(step)=="table" then return step end
+        end
+        return nil
+    end
+    local function tryRequest()
+        if not V.autoUnlock and not V.autoMastery then return end
+        if os.clock()-V.lastRequest<35 then return end
+        if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
+            FeatureState.islandTraveling or emTransicao() then
+            V.status="Haki em espera: outra atividade ativa"
+            return
+        end
+        local data=lerDados()
+        local char,root,hum=character()
+        if not data or not root or not hum or hum.Health<=0 then
+            V.status="Aguardando dados do jogador"
+            return
+        end
+        local sense,armor=levels(data)
+        local quest=activeQuest(data)
+        if quest then
+            V.status="Treino em andamento: "..quest
+            if V.autoTrack and V.lastTracked~=quest and QuestEvent then
+                enviarQuest("Track",quest)
+                V.lastTracked=quest
+            end
+            return
+        end
+        local action,kind,price,minLevel,description
+        if V.autoUnlock and sense<1 then
+            action,kind,price,minLevel,description="AcceptSense","Kenbushoku",12500,145,"Vox Sense"
+        elseif V.autoUnlock and armor<1 and sense>0 then
+            action,kind,price,minLevel,description="AcceptArmor","Busoshoku",12500,145,"Vox Armor"
+        elseif V.autoMastery and sense>0 and armor>0 then
+            local best
+            for _,power in ipairs({"Kenbushoku","Busoshoku"}) do
+                local lv=power=="Kenbushoku" and sense or armor
+                local step=trainingStep(power,lv+1)
+                if step and (not best or step.MinLevel<best.step.MinLevel) then
+                    best={kind=power,step=step}
+                end
+            end
+            if best then
+                action="AcceptMastery"
+                kind=best.kind
+                price=best.step.Price
+                minLevel=best.step.MinLevel
+                description=kind=="Kenbushoku" and "Vox Sense Mastery" or "Vox Armor Mastery"
+            end
+        end
+        if not action then
+            V.status="Hakis desbloqueados ou não há treino pendente"
+            return
+        end
+        if lerNivel(data)<minLevel then
+            V.status=description..": precisa do nível "..minLevel
+            return
+        end
+        local trainer=trainerPosition()
+        if not trainer or (root.Position-trainer).Magnitude>24 then
+            V.status=description..": aproxime-se do Askard na Skull Island"
+            return
+        end
+        if not storyObjective(kind) and not canPay(price) then
+            V.status=description..": precisa de "..price.." Gold"
+            return
+        end
+        local sent=network(action,action=="AcceptMastery" and kind or nil)
+        V.status=sent and ("Pedido de "..description.." enviado; aguardando servidor")
+            or ("Falha ao pedir "..description)
+    end
+    function V.setArmor(v) V.autoArmor=(v==true) end
+    function V.setSense(v) V.autoSense=(v==true) end
+    function V.setUnlock(v)
+        V.autoUnlock=(v==true)
+        V.lastRequest=0
+        if V.autoUnlock then V.status="Procurando treino Vox com Askard" end
+    end
+    function V.setMastery(v)
+        V.autoMastery=(v==true)
+        V.lastRequest=0
+    end
+    function V.setTrack(v) V.autoTrack=(v==true) end
+    function V.goTrainer()
+        local pos=trainerPosition()
+        local char,root=character()
+        if not pos or not char or not root then
+            notify("Askard não foi carregado. Vá à Skull Island primeiro.")
+            return
+        end
+        if emTransicao() or FeatureState.islandTraveling then
+            notify("Aguarde o teleporte atual terminar.")
+            return
+        end
+        if (root.Position-pos).Magnitude<13 then
+            notify("Você já está perto do Askard.")
+            return
+        end
+        if (root.Position-pos).Magnitude>900 then
+            notify("Askard está longe. Viaje à Skull Island pela aba Teleport.")
+            return
+        end
+        if State.AutoBoss or State.AutoRaid or State.AutoSeaBeast or State.AutoFarmQuest then
+            notify("Desative o farm atual antes de ir ao treinador.")
+            return
+        end
+        liberarVoo()
+        local ok=pcall(function() char:PivotTo(CFrame.new(pos+Vector3.new(0,3,6))) end)
+        notify(ok and "Aproximação ao Askard solicitada." or "Não foi possível chegar ao Askard.")
+    end
+    function V.statusButton()
+        local data=lerDados()
+        if not data then notify("Os dados das habilidades não foram carregados.");return end
+        local sense,armor,soru,geppo=levels(data)
+        local quest=activeQuest(data)
+        local char=player.Character
+        local state=char and locked(char) and " | Poderes bloqueados nesta área" or ""
+        notify("Vox Sense Lv."..sense.." | Vox Armor Lv."..armor..
+            " | Phantom Rush Lv."..soru.." | Heavenstep Lv."..geppo..
+            " | "..tostring(quest or V.status)..state)
+    end
+    task.spawn(function()
+        while running() do
+            local ok,err=pcall(function()
+                if V.autoArmor then activate("Busoshoku") end
+                if V.autoSense then activate("Kenbushoku") end
+                tryRequest()
+            end)
+            if not ok and os.clock()-V.lastError>5 then
+                V.lastError=os.clock()
+                V.status="Erro Vox: "..tostring(err)
+                warn("[GR Hub Vox]",err)
+            end
+            task.wait((V.autoArmor or V.autoSense or V.autoUnlock or V.autoMastery) and .75 or 2)
+        end
+    end)
+    return V
+end)()
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.5 - SEA APPROACH CONTROL",
+        "GR HUB V10.6 - HAKI VOX AUTO",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -4023,6 +4304,12 @@ local function copiarDebug()
         "Boss modo esquiva: "..tostring(BossFarm.dodgeMode),
         "Boss velocidade retorno: "..tostring(BossFarm.returnSpeed),
         "Boss velocidade aproximação: "..tostring(BossFarm.approachSpeed),
+        "Vox Sense auto: "..tostring(VoxHaki.autoSense),
+        "Vox Armor auto: "..tostring(VoxHaki.autoArmor),
+        "Vox Auto Iniciar: "..tostring(VoxHaki.autoUnlock),
+        "Vox Auto Mastery: "..tostring(VoxHaki.autoMastery),
+        "Vox status: "..tostring(VoxHaki.status),
+        "Vox pedidos enviados: "..tostring(VoxHaki.requests),
         "Boss risco atual: "..tostring(BossFarm.riskScore),
         "Boss destino seguro: "..tostring(BossFarm.safePoint),
         "Boss leituras de perigo: "..tostring(BossFarm.scanCount),
@@ -4212,6 +4499,14 @@ Hub.CreateButton(secRaid,"Teleportar para Raid",Raid.teleport)
 local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
+local hakiPanel=Hub.CreateSection("Player","HAKI / VOX")
+Hub.CreateToggle(hakiPanel,"Auto ativar Vox Armor",VoxHaki.setArmor)
+Hub.CreateToggle(hakiPanel,"Auto ativar Vox Sense",VoxHaki.setSense)
+Hub.CreateToggle(hakiPanel,"Auto iniciar treino Haki (usa Gold)",VoxHaki.setUnlock)
+Hub.CreateToggle(hakiPanel,"Auto aceitar evoluções Vox (usa Gold)",VoxHaki.setMastery)
+Hub.CreateToggle(hakiPanel,"Auto rastrear missão Vox",VoxHaki.setTrack)
+Hub.CreateButton(hakiPanel,"Ir ao Askard (Skull Island)",VoxHaki.goTrainer,"map-pin")
+Hub.CreateButton(hakiPanel,"Status Haki / Poderes",VoxHaki.statusButton,"eye")
 local reset=Hub.CreateSection("Player","PERSONAGEM")
 Hub.CreateButton(reset,"Resetar Personagem",function()
     liberarVoo()
