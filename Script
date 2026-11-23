@@ -5381,7 +5381,7 @@ local SecondaryQuestAuto={enabled=false,status="Inicializando",name=nil,objectiv
 function SecondaryQuestAuto.setAuto(_) warn("[GR Secondary Quest] Módulo indisponível") end
 local okSecondary,errSecondary=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SecondaryQuestAuto"
-    local fresh=url.."?v=12.2&t="..tostring(os.time())
+    local fresh=url.."?v=12.3&t="..tostring(os.time())
     local okGet,code=pcall(function() return game:HttpGet(fresh,true) end)
     if not okGet or type(code)~="string" or code=="" then
         code=game:HttpGet(url,true)
@@ -5483,7 +5483,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.2 - FIX NPC MYSTERIOUS MONK",
+        "GR HUB V12.3 - SECONDARY QUEST MINIGAMES ENGINE",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5557,6 +5557,14 @@ local function copiarDebug()
         "Secondary Quest disponiveis: "..tostring(SecondaryQuestAuto.actionable),
         "Secondary Quest sem progresso (s): "..tostring(math.floor(math.max(0,os.clock()-(SecondaryQuestAuto.lastProgressTime or os.clock())))),
         "Secondary Quest status: "..tostring(SecondaryQuestAuto.status),
+        "Secondary Quest motor: "..tostring(SecondaryQuestAuto.actionHandler),
+        "Secondary Quest bloqueio: "..tostring(SecondaryQuestAuto.actionBlocked),
+        "Secondary Quest minigame: "..tostring(SecondaryQuestAuto.minigameName),
+        "Secondary Quest mini alvos: "..tostring(SecondaryQuestAuto.minigameFound),
+        "Secondary Quest mini cliques: "..tostring(SecondaryQuestAuto.minigameClicks),
+        "Secondary Quest mini ultimo clique: "..tostring(SecondaryQuestAuto.minigameLastClick),
+        "Secondary Quest pedras pedidos: "..tostring(SecondaryQuestAuto.stoneRequests),
+        "Secondary Quest pedras status: "..tostring(SecondaryQuestAuto.stoneStatus),
         "Secondary Quest finalizadas: "..tostring(SecondaryQuestAuto.completed),
         "Secondary Quest pedidos: "..tostring(SecondaryQuestAuto.requests),
         "Secondary Quest erros: "..tostring(SecondaryQuestAuto.failures),
@@ -5581,6 +5589,12 @@ local function copiarDebug()
         "Phantom Tablet acao: "..tostring(SecondaryQuestAuto.phantomAction),
         "Phantom Tablet tentativas: "..tostring(SecondaryQuestAuto.phantomAttempts),
         "Phantom Tablet status: "..tostring(SecondaryQuestAuto.phantomStatus),
+        "Phantom Tablet etapa: "..tostring(SecondaryQuestAuto.phantomStage),
+        "Phantom Tablet dentro da entrada: "..tostring(SecondaryQuestAuto.phantomInsideEntry),
+        "Phantom Tablet corredor restante: "..tostring(SecondaryQuestAuto.phantomRunDistance),
+        "Phantom Tablet passos corredor: "..tostring(SecondaryQuestAuto.phantomRunSteps),
+        "Phantom Tablet id minigame: "..tostring(SecondaryQuestAuto.phantomActiveId),
+        "Phantom Tablet corredor falhas: "..tostring(SecondaryQuestAuto.phantomRunBlocked),
         "Secondary Quest NPC ultima acao: "..tostring(SecondaryQuestAuto.npcStatus),
         "Secondary Quest NPC pedidos: "..tostring(SecondaryQuestAuto.npcRequests),
         "Secondary Quest Bobo tentativas: "..tostring(SecondaryQuestAuto.tomatoAttempts),
