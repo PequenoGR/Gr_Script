@@ -4006,7 +4006,7 @@ end)()
 local VoxHaki = (function()
     local V={
         autoArmor=false,autoSense=false,autoUnlock=false,autoMastery=false,
-        autoTrack=true,status="Desligado",lastRequest=0,lastToggle={},
+        autoTrack=false,status="Desligado",lastRequest=0,lastToggle={},
         lastTracked=nil,requests=0,lastError=0
     }
     local QUESTS={"Vox Sense Training","Vox Armor Training","Vox Sense Mastery","Vox Armor Mastery"}
@@ -4081,11 +4081,15 @@ local VoxHaki = (function()
         end
         local ignore=workspace:FindFirstChild("IgnoreList")
         local inner=ignore and ignore:FindFirstChild("Int")
-        local scopes={
-            inner and inner:FindFirstChild("NPCs"),
-            ignore and ignore:FindFirstChild("NPCs"),
-            workspace:FindFirstChild("Playability")
-        }
+        local scopes={}
+        for _,folder in ipairs({
+            inner or false,ignore or false,workspace:FindFirstChild("Playability") or false
+        }) do
+            if folder then
+                local npcFolder=folder:FindFirstChild("NPCs")
+                if npcFolder then table.insert(scopes,npcFolder) end
+            end
+        end
         for _,folder in ipairs(scopes) do
             if folder then
                 for _,obj in ipairs(folder:GetDescendants()) do
