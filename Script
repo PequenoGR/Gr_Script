@@ -803,11 +803,13 @@ local function atualizarVoo(dt)
         end
         local delta=r.destino-root.Position
         local distance=delta.Magnitude
-        if distance>0.3 then
-            local step=math.min(distance,math.max(1800,modo.Velocidade)*math.min(dt,.1))
+        local speed=distance>70 and 470 or (distance>20 and 330 or (distance>6 and 205 or 95))
+        FeatureState.seaFollowSpeed=speed
+        if distance>0.42 then
+            local step=math.min(distance,speed*math.min(dt,.05))
             char:TranslateBy(delta.Unit*step)
         end
-        faseVoo=distance<1.5 and "Sea: encostado na cabeça" or "Sea: aproximação rápida"
+        faseVoo=distance<1.6 and "Sea: encostado na cabeça" or "Sea: voo suave"
         return
     end
     if ((State.AutoRaid and r.chave=="RaidEnemy") or (State.AutoSeaBeast and r.chave=="SeaBoss") or (State.AutoBoss and r.chave=="AutoBoss")) and (root.Position-r.destino).Magnitude<=30 then
@@ -1879,6 +1881,8 @@ local Sea = (function()
         skillIndex = 0, lastDodge = 0, dodgeUntil = 0,
         dodgePoint = nil, dodgeSide = 1, lastHealth = nil,
         dodges = 0, nextThreatScan = 0, cachedThreat = nil, lastThreatToken = nil,
+        oceanUtils = nil, oceanHeight = nil, lastOceanScan = -20,
+        waterStatus = "Aguardando água", followSpeed = 0,
         eventPart = nil, dead = false, skills = nil
     }
     local function kind(m)
@@ -1920,6 +1924,45 @@ local Sea = (function()
             return Vector3.new(bp.Position.X,math.max(bp.Position.Y,cf.Position.Y+size.Y*.34),bp.Position.Z)
         end
         return bp.Position
+    end
+    local function getOceanHeight(pos)
+        if os.clock()-S.lastOceanScan<.25 then return S.oceanHeight end
+        S.lastOceanScan=os.clock()
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local water=ignore and ignore:FindFirstChild("Water")
+        if not water or not water:FindFirstChild("OceanChunks") then
+            S.oceanHeight=nil
+            S.waterStatus="Oceano não carregado"
+            return nil
+        end
+        if not S.oceanUtils then
+            local modules=RS:FindFirstChild("Modules")
+            local essentials=modules and modules:FindFirstChild("Essentials")
+            local navigation=essentials and essentials:FindFirstChild("NavigationSystem")
+            local client=navigation and navigation:FindFirstChild("NavigationSystem Client")
+            local swim=client and client:FindFirstChild("SwimSystem Client")
+            local utils=swim and swim:FindFirstChild("Utils")
+            if utils and utils:IsA("ModuleScript") then
+                local ok,obj=pcall(require,utils)
+                if ok and type(obj)=="table" and type(obj.GetOceanHeight)=="function" then
+                    S.oceanUtils=obj
+                end
+            end
+        end
+        if not S.oceanUtils then
+            S.oceanHeight=nil
+            S.waterStatus="Utilitário de ondas não encontrado"
+            return nil
+        end
+        local ok,value=pcall(S.oceanUtils.GetOceanHeight,CFrame.new(pos))
+        if ok and type(value)=="number" and value==value and math.abs(value)<10000 then
+            S.oceanHeight=value
+            S.waterStatus="Ondas acompanhadas"
+        else
+            S.oceanHeight=nil
+            S.waterStatus="Altura das ondas indisponível"
+        end
+        return S.oceanHeight
     end
     local function clearMark(m)
         local a = S.marks[m]
@@ -2274,12 +2317,29 @@ local Sea = (function()
         local headVelocity=bp.AssemblyLinearVelocity*0.025
         if headVelocity.Magnitude>1.5 then headVelocity=headVelocity.Unit*1.5 end
         local goal=head+Vector3.new(0,0.45,0)+headVelocity
+        local oceanHeight=getOceanHeight(root.Position)
+        local diving=false
+        if oceanHeight and (root.Position-head).Magnitude<170 then
+            diving=head.Y<oceanHeight-2.5
+            local safeHeight=oceanHeight+1.65
+            if goal.Y<safeHeight then
+                goal=Vector3.new(goal.X,safeHeight,goal.Z)
+            end
+            S.waterStatus=diving and "Sea Beast mergulhado" or
+                (head.Y<oceanHeight+1.5 and "Seguindo superfície das ondas" or "Cabeça acima da água")
+        end
         local headDistance=(root.Position-head).Magnitude
-        S.status=(root.Position-goal).Magnitude>1.6 and ("Grudando na cabeça: "..tostring(kind(boss))) or ("Encostado na cabeça: "..tostring(kind(boss)))
+        if diving then
+            S.status="Aguardando Sea Beast subir da água"
+        else
+            S.status=(root.Position-goal).Magnitude>1.6 and
+                ("Aproximando suavemente: "..tostring(kind(boss))) or
+                ("Encostado na cabeça: "..tostring(kind(boss)))
+        end
         definirDestino(goal,"SeaBoss")
         local tool=equiparArma()
         if not tool then S.attack="Tool não encontrada";return end
-        if headDistance<9 and os.clock()-S.m1>.035 then
+        if not diving and headDistance<9 and os.clock()-S.m1>.035 then
             S.m1=os.clock()
             local face=Vector3.new(head.X-root.Position.X,0,head.Z-root.Position.Z)
             if face.Magnitude>0.15 then
@@ -2290,7 +2350,7 @@ local Sea = (function()
         elseif headDistance>=9 then
             S.attack="Aproximando para M1 ("..math.floor(headDistance).." studs)"
         end
-        if headDistance<80 and os.clock()-S.skill>.95 then
+        if not diving and headDistance<80 and os.clock()-S.skill>.95 then
             S.skill=os.clock()
             pcall(skillUse,tool)
         end
@@ -2310,6 +2370,8 @@ local Sea = (function()
             S.dodgeUntil=0
             S.dodgePoint=nil
             S.status="Procurando Sea Beast"
+            S.lastOceanScan=-20
+            S.oceanHeight=nil
             liberarVoo()
         else
             S.status="Desligado"
@@ -3895,7 +3957,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V10.3 - SEA BEAST M1 TURBO",
+        "GR HUB V10.4 - SEA WATER FLIGHT",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -3942,6 +4004,9 @@ local function copiarDebug()
         "Sea status: "..tostring(Sea.status),
         "Sea ataque: "..tostring(Sea.attack),
         "Sea ameaça: "..tostring(Sea.threat),
+        "Sea estado da água: "..tostring(Sea.waterStatus),
+        "Sea altura da água: "..tostring(Sea.oceanHeight),
+        "Sea velocidade voo: "..tostring(FeatureState.seaFollowSpeed),
         "Sea esquivas: "..tostring(Sea.dodges),
         "Sea perigo detectado: "..tostring(Sea.cachedThreat and Sea.cachedThreat.reason),
         "Status: "..status,
@@ -4110,6 +4175,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.3] Sea Beast encostado na cabeça, M1 0.035s e acompanhamento direto")
+print("[GR Hub V10.4] Sea Beast: voo suavizado, altura real das ondas e cabeça acima da água")
 
 end)()
