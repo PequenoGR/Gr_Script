@@ -5479,7 +5479,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V11.8 - BOBO ROTA E MINIGAME",
+        "GR HUB V11.9 - INTERACAO SECONDARY DESERT",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5556,6 +5556,16 @@ local function copiarDebug()
         "Secondary Quest finalizadas: "..tostring(SecondaryQuestAuto.completed),
         "Secondary Quest pedidos: "..tostring(SecondaryQuestAuto.requests),
         "Secondary Quest erros: "..tostring(SecondaryQuestAuto.failures),
+        "Secondary Quest alvo de interacao: "..tostring(SecondaryQuestAuto.interactionTarget),
+        "Secondary Quest distancia de interacao: "..tostring(SecondaryQuestAuto.interactionDistance),
+        "Secondary Quest tipo de interacao: "..tostring(SecondaryQuestAuto.interactionMode),
+        "Secondary Quest interacoes tentadas: "..tostring(SecondaryQuestAuto.interactionAttempts),
+        "Secondary Quest NPC encontrado: "..tostring(SecondaryQuestAuto.npcAlias),
+        "Secondary Quest objetivo Desert: "..tostring(SecondaryQuestAuto.desertStatus),
+        "Secondary Quest zonas tentadas: "..tostring(SecondaryQuestAuto.zoneAttempts),
+        "Secondary Quest zona status: "..tostring(SecondaryQuestAuto.zoneStatus),
+        "Secondary Quest portas tentadas: "..tostring(SecondaryQuestAuto.doorAttempts),
+        "Secondary Quest porta status: "..tostring(SecondaryQuestAuto.doorStatus),
         "Secondary Quest NPC ultima acao: "..tostring(SecondaryQuestAuto.npcStatus),
         "Secondary Quest NPC pedidos: "..tostring(SecondaryQuestAuto.npcRequests),
         "Secondary Quest Bobo tentativas: "..tostring(SecondaryQuestAuto.tomatoAttempts),
