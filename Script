@@ -4275,14 +4275,24 @@ local VoxHaki = (function()
             " | "..tostring(quest or V.status)..state)
     end
 
+    local miniObjectiveCache={}
+    local miniObjectiveChecked=-10
+    local miniProgress
     local function objectiveActive(id)
-        local progress=getProgress()
+        local now=os.clock()
+        if now-miniObjectiveChecked>.65 then
+            miniObjectiveChecked=now
+            miniObjectiveCache={}
+            miniProgress=getProgress()
+        end
+        if miniObjectiveCache[id]~=nil then return miniObjectiveCache[id] end
         local quests=mainModulo and mainModulo.QuestsUtils
-        if type(progress)~="table" or not quests or type(quests.IsObjectiveActive)~="function" then
+        if type(miniProgress)~="table" or not quests or type(quests.IsObjectiveActive)~="function" then
             return false
         end
-        local ok,result=pcall(quests.IsObjectiveActive,progress,id)
-        return ok and result==true
+        local ok,result=pcall(quests.IsObjectiveActive,miniProgress,id)
+        miniObjectiveCache[id]=ok and result==true
+        return miniObjectiveCache[id]
     end
     local function hakiObjective(kind)
         if kind=="StoneBreak" then
@@ -4546,14 +4556,16 @@ local VoxHaki = (function()
             " | Inícios pedidos: "..V.miniStarts..
             " | "..V.miniStatus)
     end
-    env.GRHubVoxMinigameStop=function()
+    local function stopMini()
         V.autoMini=false
         V.autoMiniStart=false
         V.miniSession=nil
         local c=V.miniConnection
         V.miniConnection=nil
         if c then pcall(function() c:Disconnect() end) end
+        if env.GRHubVoxMinigameStop==stopMini then env.GRHubVoxMinigameStop=nil end
     end
+    env.GRHubVoxMinigameStop=stopMini
     task.spawn(function()
         while running() do
             if V.autoMini then
@@ -4575,9 +4587,7 @@ local VoxHaki = (function()
             end
             task.wait(V.autoMini and .025 or .85)
         end
-        if type(env.GRHubVoxMinigameStop)=="function" then
-            env.GRHubVoxMinigameStop()
-        end
+        stopMini()
     end)
     task.spawn(function()
         while running() do
@@ -4846,6 +4856,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V10.5] Sea Beast: aproximação mais lenta e velocidade ajustável pela interface")
+print("[GR Hub V10.7] Auto Vox MiniGames: Dodge, Spar e StoneBreak; outras funções preservadas")
 
 end)()
