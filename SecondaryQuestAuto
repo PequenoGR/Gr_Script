@@ -17,7 +17,10 @@ return function(C)
         tomatoMiniActive=false,tomatoSession=nil,tomatoConnection=nil,
         npcRequests=0,npcStatus="-",
         tomatoExpected="-",tomatoProgress=0,tomatoPressAt="-",
-        clownDoorStatus="-",clownDistance=nil
+        clownDoorStatus="-",clownDistance=nil,
+        clownMiniSeen=0,clownMiniRunning=false,clownAction="none",
+        clownLastInputMethod="-",clownDoorAttempts=0,clownGuiFound=false,
+        clownStartUntil=0,clownInputWindow="-"
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
@@ -460,6 +463,7 @@ return function(C)
                         if fired then
                             R.tomatoInputs+=1
                             R.tomatoStatus="Bobo: toque "..side.." por conexão"
+                            R.clownLastInputMethod="connection"
                             return true
                         end
                     end
@@ -468,6 +472,7 @@ return function(C)
             if type(firesignal)=="function" and pcall(firesignal,button.MouseButton1Down) then
                 R.tomatoInputs+=1
                 R.tomatoStatus="Bobo: toque "..side.." por sinal"
+                R.clownLastInputMethod="firesignal"
                 return true
             end
             if tomatoInput then
@@ -480,6 +485,7 @@ return function(C)
                 if ok then
                     R.tomatoInputs+=1
                     R.tomatoStatus="Bobo: toque virtual "..side
+                    R.clownLastInputMethod="mouse"
                     return true
                 end
             end
@@ -493,6 +499,7 @@ return function(C)
             if ok then
                 R.tomatoInputs+=1
                 R.tomatoStatus="Bobo: tecla virtual "..side
+                R.clownLastInputMethod="keyboard"
                 return true
             end
         end
@@ -504,17 +511,19 @@ return function(C)
             or type(C.dadosModulo.Network.OnClientEvent)~="function" then return end
         local ok,conn=pcall(function()
             return C.dadosModulo.Network.OnClientEvent("MinigamesService",function(action,payload)
-                if not C.running() or type(payload)~="table" then return end
-                if action=="Start" and payload.name=="Dodge"
+                if not C.running() then return end
+                if action=="Start" and type(payload)=="table" and payload.name=="Dodge"
                     and type(payload.data)=="table" and payload.data.Mode=="Tomatoes" then
                     R.tomatoSession={
                         info=payload.data,started=os.clock(),next=1,
                         seen={},lastVisual=nil
                     }
                     R.tomatoMiniActive=true
+                    R.clownMiniSeen+=1
+                    R.clownStartUntil=os.clock()+5
                     R.tomatoStatus="Bobo: minigame iniciado"
                 elseif (action=="Stop" or action=="StopAll")
-                    and (payload.name==nil or payload.name=="Dodge") then
+                    and (type(payload)~="table" or payload.name==nil or payload.name=="Dodge") then
                     R.tomatoSession=nil
                     R.tomatoMiniActive=false
                 end
@@ -527,44 +536,60 @@ return function(C)
         if not R.enabled or R.name~="The Great Show"
             or R.objective~="Dodge_Tomatoes_SQ" then return end
         local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
-        local guiReady=gui and gui:IsA("ScreenGui") and gui.Enabled
+        local guiRunning=gui and gui:IsA("ScreenGui") and gui.Enabled
             and not gui:FindFirstChild("Result",true)
         local active=tomatoManager and tomatoManager.Active
-        if not guiReady and (not active or active.Name~="Dodge") then
+        local actualRunning=(active and active.Name=="Dodge") or guiRunning
+        R.clownGuiFound=guiRunning and true or false
+        R.clownMiniRunning=actualRunning and true or false
+        if not actualRunning then
             R.tomatoMiniActive=false
             return
         end
         R.tomatoMiniActive=true
+        R.clownStartUntil=math.max(R.clownStartUntil or 0,os.clock()+1.2)
         local session=R.tomatoSession
         if not session then
-            session={info={},started=os.clock(),next=1,seen={},lastVisual=nil,
-                lastVisualPress=-100,visualArmed=true}
+            session={info={},started=os.clock(),next=1,seen={},
+                lastVisual=nil,lastVisualPress=-100,visualArmed=true}
             R.tomatoSession=session
         end
-        local hint=guiReady and gui:FindFirstChild("KeyHint",true)
+        local hint=guiRunning and gui:FindFirstChild("KeyHint",true)
         local letter=hint and hint:FindFirstChild("Letter",true)
         local fill=hint and hint:FindFirstChild("Fill",true)
         if letter and fill then
-            local word=tostring(letter.Text):upper():gsub("%s+","")
-            local direction=({A="Left",D="Right",LEFT="Left",RIGHT="Right"})[word]
+            local text=tostring(letter.Text):upper():gsub("%s+","")
+            local side=({A="Left",D="Right",LEFT="Left",RIGHT="Right"})[text]
             local progress=math.clamp(fill.Size.X.Scale,0,1)
             R.tomatoProgress=math.floor(progress*100)
-            R.tomatoExpected=word
-            if progress<=.22 or word~=session.lastVisual then
+            R.tomatoExpected=text
+            local now=os.clock()
+            local hasMobileTouch=gui:FindFirstChild("LeftTouch",true)~=nil
+            local travel=tonumber(session.info and session.info.Travel)
+            local threshold
+            if hasMobileTouch then
+                threshold=travel and math.clamp(1-.50/math.max(.12,travel),.20,.82) or .68
+            else
+                threshold=travel and math.clamp(1-.09/math.max(.12,travel),.83,.97) or .91
+            end
+            R.clownInputWindow=math.floor(threshold*100).."% ("..(hasMobileTouch and "toque" or "teclado")..")"
+            if progress<=.24 or (session.previousProgress and
+                progress<session.previousProgress-.32) or
+                (session.lastVisual and text~=session.lastVisual) then
                 session.visualArmed=true
             end
-            local now=os.clock()
-            if direction and progress>=.40 and progress<=.82
-                and session.visualArmed
-                and now-(session.lastVisualPress or -100)>.12 then
-                if pressTomato(direction) then
-                    session.lastVisual=word
+            session.previousProgress=progress
+            if side and session.visualArmed and
+                progress>=threshold and progress<=.985 and
+                now-(session.lastVisualPress or -100)>.12 then
+                if pressTomato(side) then
+                    session.lastVisual=text
                     session.lastVisualPress=now
                     session.visualArmed=false
                     R.tomatoNote+=1
                     R.tomatoPressAt=tostring(math.floor(progress*100)).."%"
-                    R.tomatoStatus="Bobo: esquiva "..word.." em "..R.tomatoPressAt
-                    R.status="Bobo: esquivando tomates pelo botão da tela"
+                    R.tomatoStatus="Bobo: "..text.." em "..R.tomatoPressAt
+                    R.status="Bobo: acertando tomates usando o indicador"
                 end
             end
             return
@@ -572,7 +597,7 @@ return function(C)
         local info=session.info or {}
         local schedule=info.Schedule
         if type(schedule)~="table" or #schedule==0 then
-            R.tomatoStatus="Bobo: aguardando teclas A/D na tela"
+            R.tomatoStatus="Bobo: minigame aberto mas ainda sem tecla / sequência"
             return
         end
         if not session.synced then
@@ -584,18 +609,17 @@ return function(C)
         if type(note)~="table" then return end
         local arrival=(tonumber(note.SpawnTime) or 0)+(tonumber(info.Travel) or .6)
         local now=os.clock()-session.started
-        local isTouch=game:GetService("UserInputService").TouchEnabled
-        local due=arrival-(isTouch and .40 or .10)
-        if now>=due and now<=arrival+.18 then
-            local key=note.Side or note.Key
-            if pressTomato(key) then
-                R.tomatoExpected=tostring(key)
+        local touch=game:GetService("UserInputService").TouchEnabled
+        local early=touch and .35 or .05
+        if now>=arrival-early and now<=arrival+(touch and .2 or .13) then
+            if pressTomato(note.Side or note.Key) then
+                R.tomatoExpected=tostring(note.Side or note.Key)
                 R.tomatoNote=session.next
-                R.tomatoPressAt="cronômetro "..math.floor(now*100)/100
-                R.status="Bobo: esquivando tomate "..session.next.."/"..#schedule
+                R.tomatoPressAt="tempo "..math.floor(now*100)/100
+                R.status="Bobo: desviando tomate "..session.next.."/"..#schedule
                 session.next+=1
             end
-        elseif now>arrival+.18 then
+        elseif now>arrival+.28 then
             session.next+=1
         end
     end
@@ -611,73 +635,97 @@ return function(C)
             task.wait(R.enabled and .025 or .9)
         end
     end)
-    local function leaveCircusIfNeeded()
-        if tostring(C.localAtual() or "")~="Circus" then
-            R.clownDoorStatus="Fora do circo; procurando Bobo"
+    local function circusDoor(goingInside)
+        local location=tostring(C.localAtual() or "")
+        if (goingInside and location=="Circus") or
+            (not goingInside and location~="Circus") then
+            R.clownDoorStatus=goingInside and "Dentro do circo" or "Fora do circo"
             return false
         end
         local ignore=workspace:FindFirstChild("IgnoreList")
-        local inner=ignore and ignore:FindFirstChild("Int")
-        local areas=inner and inner:FindFirstChild("PrivateAreas")
-        local island=areas and areas:FindFirstChild("Circus Town")
+        local int=ignore and ignore:FindFirstChild("Int")
+        local private=int and int:FindFirstChild("PrivateAreas")
+        local island=private and private:FindFirstChild("Circus Town")
         local circus=island and island:FindFirstChild("Circus")
-        local leave=circus and circus:FindFirstChild("Leave")
-        local entry=leave and leave:FindFirstChild("Entrance")
+        local folder=circus and circus:FindFirstChild(goingInside and "Enter" or "Leave")
+        local entry=folder and folder:FindFirstChild("Entrance")
         local point=entry and position(entry)
         if not point then
-            local attr=leave and leave:GetAttribute("Entrance")
-            if typeof(attr)=="Vector3" then point=attr end
+            local p=folder and folder:GetAttribute("Entrance")
+            if typeof(p)=="Vector3" then point=p end
         end
         if not point then
-            R.clownDoorStatus="Saída do circo não carregada"
+            R.clownDoorStatus="Porta "..(goingInside and "Enter" or "Leave").." não carregada"
             R.status=R.clownDoorStatus
             return true
         end
-        if not moveTo(point,4,"Saindo do circo para falar com Bobo") then
-            R.clownDoorStatus="Indo à saída do circo"
-            return true
-        end
-        once("SQExitCircus",.85,function()
+        R.clownDoorStatus=goingInside and "Entrando no circo" or "Saindo do circo"
+        if not moveTo(point,3.7,R.clownDoorStatus) then return true end
+        once("SQCircusDoor:"..tostring(goingInside),1.25,function()
             local _,root,hum,valid=alive()
             if not valid then return end
+            R.clownDoorAttempts+=1
             if entry and entry:IsA("BasePart") and type(firetouchinterest)=="function" then
                 pcall(function()
                     firetouchinterest(root,entry,0)
                     firetouchinterest(root,entry,1)
                 end)
             end
-            if C.interagirNPC then
-                pcall(C.interagirNPC,CFrame.new(point),leave)
+            local prompt=folder and folder:FindFirstChildWhichIsA("ProximityPrompt",true)
+            if prompt then
+                if type(fireproximityprompt)=="function" then
+                    pcall(fireproximityprompt,prompt)
+                else
+                    pcall(function()
+                        prompt:InputHoldBegin()
+                        task.delay(math.max(prompt.HoldDuration,.12),
+                            function() if prompt.Parent then prompt:InputHoldEnd() end end)
+                    end)
+                end
             end
             if C.privateClient and C.privateClient.Current then
                 server("PrivateAreas","EnterArea",C.privateClient.Current)
             end
-            hum:MoveTo(point)
-            R.clownDoorStatus="Ativando saída do circo"
-            R.status=R.clownDoorStatus
+            pcall(function() hum:MoveTo(point) end)
+            R.status=R.clownDoorStatus.." (tentativa "..R.clownDoorAttempts..")"
         end)
         return true
+    end
+    local function leaveCircusIfNeeded()
+        return circusDoor(false)
     end
     local function startTomatoShow(pos)
         local _,root,hum,valid=alive()
         if not valid then return end
+        if R.clownMiniRunning or
+            (tomatoManager and tomatoManager.Active and tomatoManager.Active.Name=="Dodge") or
+            (player.PlayerGui:FindFirstChild("DodgeMinigameGui")~=nil) then
+            R.status="Bobo: show iniciado, aguardando esquivas"
+            stopRoute()
+            return
+        end
+        if os.clock()<(R.clownStartUntil or 0) then
+            R.status="Bobo: aguardando resposta ao StartShow"
+            return
+        end
         if leaveCircusIfNeeded() then return end
         local npcPos,npcModel=converseInfo("TomatoClown",root)
         local target=npcPos or pos
         if not target then
-            R.status="Bobo não carregado; aguardando Character_Tomato Clown"
+            R.status="Tomato Clown ainda não carregado em Character_Tomato Clown"
             return
         end
         R.clownDistance=math.floor((root.Position-target).Magnitude)
-        if not moveTo(target,6,"Indo ao Bobo (Tomato Clown)") then return end
+        if not moveTo(target,5.5,"Indo ao Bobo (Tomato Clown)") then return end
         R.lastNPC="Tomato Clown"
-        once("SQClownStartShow",1.4,function()
+        once("SQClownStartShow",2.6,function()
             if server("Elysium_Converse","TomatoClown","StartShow") then
+                R.clownStartUntil=os.clock()+2.8
                 R.npcRequests+=1
                 R.tomatoAttempts+=1
                 R.npcStatus="TomatoClown / StartShow"
-                R.tomatoStatus="StartShow enviado ao Bobo"
-                R.status="Bobo: iniciando desafio dos tomates"
+                R.tomatoStatus="StartShow enviado; aguardando minigame"
+                R.status="Bobo: aguardando show iniciar"
             end
         end)
     end
@@ -782,6 +830,9 @@ return function(C)
         local _,root,hum,ok=alive()
         if not ok then return end
         local converse,actor,action=table.unpack(npc)
+        if quest.name=="The Great Show" and circusDoor(true) then
+            return
+        end
         if converse=="" then
             R.status="Missão sem diálogo: "..quest.name
             R.skipped[quest.name]=os.clock()+30
@@ -904,6 +955,8 @@ return function(C)
             R.name=quest.name
             R.tomatoSession=nil
             R.tomatoMiniActive=false
+            R.clownMiniRunning=false
+            R.clownStartUntil=0
             R.lastEnemy=nil
             R.lastEnemyName=nil
             R.objective=nil
@@ -997,6 +1050,9 @@ return function(C)
             R.sessionDone={}
             R.lastProgressKey=nil
             R.lastProgressTime=os.clock()
+            R.clownStartUntil=0
+            R.clownMiniRunning=false
+            R.tomatoSession=nil
             if C.State.AutoFarmQuest then C.definirFarm(false) end
             if C.State.AutoFarmFruit then C.definirFarmFruta(false) end
             if C.State.AutoHaki then C.VoxHaki.setFullAuto(false) end
