@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -790,7 +790,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1833,6 +1833,8 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubSkyHermitStop)=="function" then pcall(env.GRHubSkyHermitStop) end
+    env.GRHubSkyHermitStop=nil
     if type(env.GRHubSecondaryStop)=="function" then pcall(env.GRHubSecondaryStop) end
     env.GRHubSecondaryStop=nil
     if type(env.GRHubBossStop)=="function" then pcall(env.GRHubBossStop) end
@@ -1891,7 +1893,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -5426,13 +5428,57 @@ env.GRHubSecondaryStop=function()
     end
 end
 
+local SkyHermitAuto={
+    enabled=false,status="Inicializando",stage="-",flag=0,flagsDone=0,totalFlags=7,
+    requests=0,failures=0,questActive=false,targetDistance=nil
+}
+function SkyHermitAuto.setAuto(_) warn("[GR Auto Sky Hermit] Módulo indisponível") end
+local okSky,errSky=pcall(function()
+    local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SkyHermitAuto"
+    local code=game:HttpGet(url)
+    if type(code)~="string" or code=="" then error("SkyHermitAuto vazio") end
+    local factory=assert(loadstring(code))
+    SkyHermitAuto=factory()({
+        player=player,
+        State=State,
+        FeatureState=FeatureState,
+        dadosModulo=dadosModulo,
+        mainModulo=mainModulo,
+        IslandTeleport=IslandTeleport,
+        SecondaryQuestAuto=SecondaryQuestAuto,
+        VoxHaki=VoxHaki,
+        Raid=Raid,
+        BossFarm=BossFarm,
+        Sea=Sea,
+        running=running,
+        character=character,
+        lerDados=lerDados,
+        localAtual=localAtual,
+        posicaoDe=posicaoDe,
+        getRoute=function() return rota end,
+        definirDestino=definirDestino,
+        liberarVoo=liberarVoo,
+        definirFarm=definirFarm,
+        definirFarmFruta=definirFarmFruta
+    })
+end)
+if not okSky then
+    SkyHermitAuto.status="Falha ao carregar: "..tostring(errSky)
+    warn("[GR Auto Sky Hermit]",errSky)
+end
+env.GRHubSkyHermitStop=function()
+    if SkyHermitAuto and type(SkyHermitAuto.stop)=="function" then
+        SkyHermitAuto.stop()
+    end
+end
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V11.4 - QUESTS SECUNDARIAS",
+        "GR HUB V11.5 - AUTO SKY HERMIT",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5509,6 +5555,17 @@ local function copiarDebug()
         "Secondary Quest finalizadas: "..tostring(SecondaryQuestAuto.completed),
         "Secondary Quest pedidos: "..tostring(SecondaryQuestAuto.requests),
         "Secondary Quest erros: "..tostring(SecondaryQuestAuto.failures),
+        "Auto Sky Hermit: "..tostring(SkyHermitAuto.enabled),
+        "Sky Hermit status: "..tostring(SkyHermitAuto.status),
+        "Sky Hermit etapa: "..tostring(SkyHermitAuto.stage),
+        "Sky Hermit quest ativa: "..tostring(SkyHermitAuto.questActive),
+        "Sky Hermit bandeira atual: "..tostring(SkyHermitAuto.flag),
+        "Sky Hermit bandeiras ativadas: "..tostring(SkyHermitAuto.flagsDone).."/"..tostring(SkyHermitAuto.totalFlags),
+        "Sky Hermit distancia: "..tostring(SkyHermitAuto.targetDistance),
+        "Sky Hermit chave registro: "..tostring(SkyHermitAuto.registryKey),
+        "Sky Hermit pedidos: "..tostring(SkyHermitAuto.requests),
+        "Sky Hermit tentativas bandeira: "..tostring(SkyHermitAuto.attemptsAtFlag),
+        "Sky Hermit erros: "..tostring(SkyHermitAuto.failures),
         "Auto Raid: "..tostring(State.AutoRaid),
         "Raid status: "..tostring(Raid.status),
         "Raid state: "..tostring(Raid.state),
@@ -5745,7 +5802,10 @@ local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
 Hub.CreateToggle(farm,"Auto Farm Quest",definirFarm)
 local secSecondary=Hub.CreateSection("Main","QUESTS SECUNDÁRIAS")
-Hub.CreateToggle(secSecondary,"Auto Quest Secundária",SecondaryQuestAuto.setAuto,"scroll-text","gr_auto_secondary")
+Hub.CreateToggle(secSecondary,"Auto Quest Secundária",function(enabled)
+    if enabled and SkyHermitAuto.enabled then SkyHermitAuto.setAuto(false) end
+    SecondaryQuestAuto.setAuto(enabled)
+end,"scroll-text","gr_auto_secondary")
 local secBoss=Hub.CreateSection("Main","AUTO BOSS")
 local bossSelector
 local function refreshBossList()
@@ -5810,6 +5870,10 @@ local hakiPanel=Hub.CreateSection("Player","HAKI / VOX")
 Hub.CreateToggle(hakiPanel,"Auto Haki",function(enabled)
     VoxHaki.setFullAuto(enabled==true)
 end,"zap","gr_auto_haki")
+local skyPanel=Hub.CreateSection("Player","SKY HERMIT / HEAVENSTEP")
+Hub.CreateToggle(skyPanel,"Auto Sky Hermit (7 bandeiras)",function(enabled)
+    SkyHermitAuto.setAuto(enabled==true)
+end,"flag","gr_auto_sky_hermit")
 local reset=Hub.CreateSection("Player","PERSONAGEM")
 Hub.CreateButton(reset,"Resetar Personagem",function()
     liberarVoo()
