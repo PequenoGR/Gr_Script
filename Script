@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=true, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -785,7 +785,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1852,7 +1852,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -4575,6 +4575,272 @@ local VoxHaki = (function()
             end
         end
     end
+
+    local objectiveOrder={
+        ["Vox Sense Training"]={
+            "Defeat_Boar","Collect_WaterBarrel_HK","Talk_AskardSupplies_HK",
+            "Dodge_Stones_HK","Talk_AskardFishing_HK","Catch_Fish",
+            "Talk_AskardBlindfold_HK","Dodge_Blindfold_HK","Talk_AskardProgress_HK"
+        },
+        ["Vox Armor Training"]={
+            "Talk_AskardArmament_HK",
+            "Break_Stone_HK_1","Break_Stone_HK_2","Break_Stone_HK_3",
+            "Talk_AskardBeast_HK","Defeat_GiantBoarHistory",
+            "Talk_AskardSparring_HK","Spar_Askard_HK",
+            "Talk_AskardArmamentEnd_HK","Talk_AskardFinalTrial_HK",
+            "Defeat_AskardHistory","Talk_AskardFinalWords_HK",
+            "Talk_AskardAwakening_HK","Watch_AskardAmbush_HK",
+            "Talk_AskardAuraForms_HK","Talk_AskardFarewell_HK",
+            "Watch_AskardDeparture_HK"
+        },
+        ["Vox Sense Mastery"]={"Train_VoxSense_VX"},
+        ["Vox Armor Mastery"]={"Train_VoxArmor_VX"}
+    }
+    local lastAction={}
+    local lastObjective=nil
+    local function autoAction(id,delay,fn)
+        if os.clock()-(lastAction[id] or -100)<(delay or 3) then return false end
+        lastAction[id]=os.clock()
+        local ok,err=pcall(fn)
+        if not ok then V.status="Erro em "..id..": "..tostring(err) end
+        return ok
+    end
+    local function skullArea()
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        return areas and areas:FindFirstChild("Skull Island")
+    end
+    local function skullMarker(folderName,name)
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local data=ignore and ignore:FindFirstChild("Data")
+        local quests=data and data:FindFirstChild("Quests")
+        local folder=quests and quests:FindFirstChild(folderName)
+        local skull=folder and folder:FindFirstChild("Skull Island")
+        local item=skull and skull:FindFirstChild(name,true)
+        if not item then return nil end
+        local pos=posicaoDe(item)
+        if pos then return pos end
+        for _,desc in ipairs(item:GetDescendants()) do
+            pos=posicaoDe(desc)
+            if pos then return pos end
+        end
+        return nil
+    end
+    local function stonePoint(index)
+        local skull=skullArea()
+        local item=skull and skull:FindFirstChild("Stone_HK_"..index,true)
+        return posicaoDe(item)
+    end
+    local function stopHakiRoute()
+        if rota and rota.chave=="VoxAuto" then liberarVoo() end
+    end
+    local function moveHakiTo(position,near,description)
+        local _,root,hum=character()
+        if not root or not hum or hum.Health<=0 then return false end
+        local target=position
+        if typeof(target)~="Vector3" then
+            local area=skullArea()
+            target=area and area:GetAttribute("MapCenter")
+            if typeof(target)~="Vector3" then
+                V.status="Skull Island ainda não está carregada"
+                return false
+            end
+            near=120
+            description="Carregando Skull Island / "..tostring(description)
+        end
+        local distance=(root.Position-target).Magnitude
+        if distance>near then
+            definirDestino(target+Vector3.new(0,2.5,0),"VoxAuto")
+            V.status="Auto Haki: "..description.." ("..math.floor(distance).." studs)"
+            return false
+        end
+        stopHakiRoute()
+        return true
+    end
+    local function hakiFree()
+        return not (State.AutoBoss or State.AutoSeaBeast or State.AutoRaid
+            or State.AutoFarmQuest or State.AutoFarmFruit or
+            FeatureState.frutaOcupada or FeatureState.islandTraveling or emTransicao())
+    end
+    local function styleTool()
+        local char,_,hum=character()
+        if not char or not hum then return nil end
+        local backpack=player:FindFirstChildOfClass("Backpack")
+        for _,where in ipairs({char,backpack}) do
+            if where then
+                for _,tool in ipairs(where:GetChildren()) do
+                    if tool:IsA("Tool") then
+                        local isStyle=tool.Name=="Combat"
+                        if not isStyle and mainModulo and mainModulo.ToolsInfo then
+                            local ok,info=pcall(function()
+                                return mainModulo.ToolsInfo:Get(tool.Name)
+                            end)
+                            isStyle=ok and info and info.ToolType=="Style"
+                        end
+                        if isStyle then
+                            if tool.Parent~=char then
+                                pcall(function() hum:EquipTool(tool) end)
+                            end
+                            if tool.Parent==char then return tool end
+                        end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+    local function autoFight(name,point)
+        local _,root,hum=character()
+        if not root or not hum or hum.Health<=0 then return end
+        local enemy=encontrarInimigo(name,root)
+        local enemyRoot=enemy and rootInimigo(enemy)
+        if not enemyRoot or not valido(enemy) then
+            moveHakiTo(point,22,"procurando "..name)
+            return
+        end
+        if not moveHakiTo(enemyRoot.Position+Vector3.new(0,4.5,0),11,
+            "combatendo "..name) then return end
+        local tool=styleTool()
+        if not tool then V.status="Auto Haki: precisa de um Fighting Style equipado";return end
+        autoAction("HakiM1",.16,function()
+            local flat=Vector3.new(enemyRoot.Position.X-root.Position.X,0,
+                enemyRoot.Position.Z-root.Position.Z)
+            if flat.Magnitude>.1 then
+                root.CFrame=CFrame.lookAt(root.Position,root.Position+flat)
+            end
+            tool:Activate()
+            if CombatEvent then CombatEvent:FireServer("Activate",tool.Name) end
+            V.status="Auto Haki: atacando "..name
+        end)
+    end
+    local function currentObjective(quest)
+        local sequence=objectiveOrder[quest]
+        if not sequence then return nil end
+        for _,id in ipairs(sequence) do
+            if objectiveActive(id) then return id end
+        end
+        return nil
+    end
+    local function autoHakiMission()
+        if not V.fullAuto or not running() then return end
+        if not hakiFree() then
+            V.status="Auto Haki pausado por outra atividade"
+            stopHakiRoute()
+            return
+        end
+        local info=V.miniManager or minigameInfo()
+        if info and info.Active then
+            V.status="Auto Haki: minigame "..tostring(info.Active.Name)
+            stopHakiRoute()
+            return
+        end
+        local data=lerDados()
+        local _,root,hum=character()
+        if not root or not hum or hum.Health<=0 or not data then return end
+        local quest=activeQuest(data)
+        if not quest then
+            local sense,armor=levels(data)
+            local candidate=sense<1 or armor<1
+            if not candidate then
+                candidate=trainingStep("Kenbushoku",sense+1)~=nil or
+                    trainingStep("Busoshoku",armor+1)~=nil
+            end
+            if not candidate then
+                V.status="Auto Haki: Vox Sense / Armor no máximo"
+                stopHakiRoute()
+                return
+            end
+            if lerNivel(data)<145 then
+                V.status="Auto Haki: precisa de nível 145 para começar"
+                stopHakiRoute()
+                return
+            end
+            if moveHakiTo(trainerPosition(),16,"indo até Askard") then
+                tryRequest()
+            end
+            return
+        end
+        local objective=currentObjective(quest)
+        if not objective then
+            V.status="Auto Haki: aguardando objetivo atualizado em "..quest
+            stopHakiRoute()
+            return
+        end
+        if lastObjective~=objective then
+            lastObjective=objective
+            V.status="Auto Haki: novo objetivo "..objective
+        end
+        if objective:sub(1,11)=="Talk_Askard" then
+            if moveHakiTo(trainerPosition(),14,"conversar com Askard") then
+                autoAction(objective,4,function()
+                    network(nil)
+                    V.status="Auto Haki: conversando com Askard"
+                end)
+            end
+        elseif objective=="Defeat_Boar" then
+            autoFight("Boar",skullMarker("InterestPoints","BoarField"))
+        elseif objective=="Defeat_GiantBoarHistory" then
+            autoFight("Giant Boar",skullMarker("InterestPoints","GiantBoarArena"))
+        elseif objective=="Defeat_AskardHistory" then
+            autoFight("Askard",trainerPosition())
+        elseif objective=="Collect_WaterBarrel_HK" then
+            local pos=skullMarker("Zones","Collect_WaterBarrel_HK")
+            if not pos then
+                local area=skullArea()
+                local model=area and area:FindFirstChild("Poço",true)
+                pos=posicaoDe(model)
+            end
+            if moveHakiTo(pos,7,"pegando água no poço") then
+                autoAction(objective,4,function()
+                    dadosModulo.Network:FireServer("QuestZones",objective,"Use")
+                    V.status="Auto Haki: enchendo o barril"
+                end)
+            end
+        elseif objective=="Catch_Fish" then
+            if moveHakiTo(skullMarker("InterestPoints","FishingSpot_HK"),15,
+                "indo ao ponto de pesca") then
+                V.status="Auto Haki: pescando para Vox Sense"
+            end
+        elseif objective:sub(1,15)=="Break_Stone_HK" or objective=="Train_VoxArmor_VX" then
+            local n=tonumber(objective:match("_(%d+)$"))
+            if not n then
+                local _,lv=levels(data)
+                local step=trainingStep("Busoshoku",lv+1)
+                n=step and step.Stone or 10
+            end
+            if moveHakiTo(stonePoint(n),10,"indo até pedra "..n) then
+                tryStartHakiMini()
+                V.status="Auto Haki: quebrando pedra "..n
+            end
+        elseif objective=="Dodge_Stones_HK" or objective=="Dodge_Blindfold_HK"
+            or objective=="Spar_Askard_HK" or objective=="Train_VoxSense_VX" then
+            if moveHakiTo(trainerPosition(),16,"indo ao treino de reflexos") then
+                tryStartHakiMini()
+                V.status="Auto Haki: iniciando "..objective
+            end
+        elseif objective:sub(1,6)=="Watch_" then
+            if moveHakiTo(trainerPosition(),16,"indo à história do Haki") then
+                autoAction(objective,5,function() network(nil) end)
+            end
+        else
+            V.status="Auto Haki: etapa pendente "..objective
+        end
+    end
+    task.spawn(function()
+        while running() do
+            if V.fullAuto then
+                local ok,err=pcall(autoHakiMission)
+                if not ok and os.clock()-V.lastError>5 then
+                    V.lastError=os.clock()
+                    V.status="Erro Auto Haki: "..tostring(err)
+                    warn("[GR Hub Haki Auto]",err)
+                end
+            end
+            task.wait(V.fullAuto and .22 or 1.2)
+        end
+        stopHakiRoute()
+    end)
+
     function V.setMini(v)
         V.autoMini=(v==true)
         V.miniStatus=V.autoMini and "Aguardando minigame Haki" or "Desligado"
@@ -4598,6 +4864,7 @@ local VoxHaki = (function()
     end
     function V.setFullAuto(v)
         V.fullAuto=(v==true)
+        State.AutoHaki=V.fullAuto
         if V.fullAuto then
             V.lastRequest=-100
             V.miniLastStart=-100
@@ -4609,9 +4876,12 @@ local VoxHaki = (function()
             V.miniStatus=V.autoMini and "Auto MiniGames individual ligado" or "Auto Haki Completo desligado"
             V.status="Auto Haki Completo: desligado"
             restoreHakiFishing()
+            stopHakiRoute()
         end
     end
     local function stopMini()
+        State.AutoHaki=false
+        stopHakiRoute()
         V.fullAuto=false
         V.autoMini=false
         V.autoMiniStart=false
