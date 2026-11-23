@@ -1,0 +1,581 @@
+return function(C)
+    local RS=game:GetService("ReplicatedStorage")
+    local RunService=game:GetService("RunService")
+    local player=C.player
+    local R={
+        enabled=false,status="Desligado",name=nil,objective=nil,
+        total=0,completed=0,requests=0,failures=0,
+        lastAction={},skipped={},lastTravel=-100,
+        lastScan=0,lastEnemy=nil,lastEnemyScan=0,
+        sessionDone={},busyFishing=false,
+        currentIsland=nil,progress="-"
+    }
+    local NPC={
+        ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
+        ["Flowers for the Dead"]={"MourningWoman","Woman in Mourning","Accept"},
+        ["The Witch's Potion"]={"Witch","Witch","AcceptPotion"},
+        ["The Lost Inscriptions"]={"CuriousMan","Curious Man","Accept"},
+        ["The Missing Performer"]={"WorriedBrother","Worried Brother","Accept"},
+        ["The Thirsty Merchant"]={"ThirstyMerchant","Thirsty Merchant","Accept"},
+        ["The Phantom Tablet"]={"MysteriousMonk","Mysterious Monk","Accept"},
+        ["The Great Show"]={"CircusRingmaster","Circus Ringmaster","Accept"},
+        ["The Impossible Ice"]={"FrostIceMerchant","Frost Ice Merchant","Accept"},
+        ["The Snowman"]={"SnowmanKid","Snowman Kid","Accept"},
+        ["Ocean Cleanup"]={"GarbageCollector","Garbage Collector","Accept"},
+        ["Sea Delivery"]={"HarborShippingMerchant","Harbor Shipping Merchant","Accept"},
+        ["The Seven Seas Messenger"]={"SeaPostman","Sea Postman","Accept"},
+        ["The Dance of the Tides"]={"TideMaster","Tide Master","Accept"},
+        ["The Wheat Harvest"]={"RustfallOldFarmer","Rustfall Old Farmer","Accept"},
+        ["Message to the Skies"]={"RustfallMessenger","Rustfall Messenger","Accept"},
+        ["The Thunder Fist"]={"RustfallStormKeeper","Rustfall Storm Keeper","Accept"},
+        ["The Lost Key"]={"PrisonKeymaster","Prison Keymaster","Lost"},
+        ["The Prisoner's Letter"]={"ShackledPrisoner","Shackled Prisoner","Accept"},
+        ["The Contraband"]={"CargoPorter","Cargo Porter Prisoner","Accept"},
+        ["Celestial Feathers"]={"WindhavenScholar","Windhaven Scholar","Accept"},
+        ["The Rookie Gladiator"]={"RookieGladiator","Rookie Gladiator","Accept"},
+        ["The Champion's Armor"]={"ValoriaBlacksmith","Valoria Blacksmith","AcceptArmor"},
+        ["The Lost Explorer"]={"LostExplorer","Lost Explorer","Guide"},
+        ["The Path of Flames"]={"FlameMaster","Flame Master","Accept"}
+    }
+    local TALK={
+        Talk_MourningWoman_SQ={"MourningWoman","Deliver"},
+        Talk_WitchPotion_SQ={"Witch","DeliverMoonflower"},
+        Talk_CircusJuggler_SQ={"CircusJuggler","Talk"},
+        Talk_WorriedBrotherReturn_SQ={"WorriedBrother","Report"},
+        Talk_ThirstyMerchantWater_SQ={"ThirstyMerchant","GiveWater"},
+        Talk_MysteriousMonk_SQ={"MysteriousMonk","Talk"},
+        Talk_TomatoClownReward_SQ={"TomatoClown","Reward"},
+        Talk_DunesIceBuyer_SQ={"DunesIceBuyer","Deliver"},
+        Talk_SnowmanKid_SQ={"SnowmanKid","Finish"},
+        Talk_GarbageCollector_SQ={"GarbageCollector","Deliver"},
+        Talk_SolmarDockClerk_SQ={"SolmarDockClerk","Deliver"},
+        Talk_TideMasterFish_FS={"TideMaster","Fish"},
+        Talk_TideMasterStone_FS={"TideMaster","Disciple"},
+        Talk_TideMasterLearn_FS={"TideMaster","Learn"},
+        Talk_OldFarmerDeliver_SQ={"RustfallOldFarmer","Deliver"},
+        Talk_SkyPalaceGuardian_SQ={"SkyPalaceGuardian","Deliver"},
+        Talk_ThunderMasterStorm_FS={"RustfallStormKeeper","Storm"},
+        Talk_ThunderMasterCrystals_FS={"RustfallStormKeeper","Crystals"},
+        Talk_ThunderMasterReady_FS={"RustfallStormKeeper","Ready"},
+        Talk_ThunderMasterLearn_FS={"RustfallStormKeeper","Learn"},
+        Talk_PrisonKeymaster_SQ={"PrisonKeymaster","Return"},
+        Talk_PrisonerSister_SQ={"PrisonerSister","Deliver"},
+        Talk_ShackledPrisonerReply_SQ={"ShackledPrisoner","Deliver"},
+        Talk_ContrabandPrisoner_SQ={"CargoPorter","Deliver"},
+        Talk_WindhavenScholarDeliver_SQ={"WindhavenScholar","Deliver"},
+        Talk_RookieGladiatorReady_SQ={"RookieGladiator","Ready"},
+        Talk_RookieGladiatorThanks_SQ={"RookieGladiator","Thanks"},
+        Talk_ValoriaBlacksmithDeliver_SQ={"ValoriaBlacksmith","DeliverArmor"},
+        Talk_LostExplorer_SQ={"LostExplorer","Guide"},
+        Talk_ShipCaptain_SQ={"ShipCaptain","Rescue"},
+        Talk_FlameMasterRun_FS={"FlameMaster","Report"},
+        Talk_FlameMasterDrills_FS={"FlameMaster","Report"},
+        Talk_FlameMasterReady_FS={"FlameMaster","Report"},
+        Talk_FlameMasterLearn_FS={"FlameMaster","Report"}
+    }
+    local function norm(x)
+        return tostring(x or ""):lower():gsub("[^%w]","")
+    end
+    local function alive()
+        local char,root,hum=C.character()
+        return char,root,hum,root~=nil and hum~=nil and hum.Health>0
+    end
+    local function data()
+        return C.lerDados()
+    end
+    local function server(action,...)
+        if not C.dadosModulo or not C.dadosModulo.Network then return false end
+        local args={...}
+        local ok=pcall(function()
+            C.dadosModulo.Network:FireServer(action,table.unpack(args))
+        end)
+        if ok then R.requests+=1 else R.failures+=1 end
+        return ok
+    end
+    local function once(key,gap,fn)
+        if os.clock()-(R.lastAction[key] or -100)<gap then return false end
+        R.lastAction[key]=os.clock()
+        local ok,e=pcall(fn)
+        if not ok then R.failures+=1;R.status="Erro "..key..": "..tostring(e) end
+        return ok
+    end
+    local function modulePath(root,path)
+        local a=root
+        for _,key in ipairs(path) do
+            if not a then return nil end
+            a=a:FindFirstChild(key)
+        end
+        return a
+    end
+    local secondaryFolder=modulePath(RS,{"Shared","MainModules","ProgressUtils","QuestsInfo","Secondary"})
+    local converseFolder=modulePath(RS,{"Elysium","Modules","Extensions","Converse","Converses"})
+    local zoneFolder=modulePath(RS,{"Modules","Addons","QuestHandlers","QuestHandlers Client","Zones Client","Zones"})
+    local zoneModules={}
+    if zoneFolder then
+        for _,obj in ipairs(zoneFolder:GetDescendants()) do
+            if obj:IsA("ModuleScript") then zoneModules[obj.Name]=obj end
+        end
+    end
+    local secondary={}
+    local secondaryByName={}
+    if secondaryFolder then
+        for _,obj in ipairs(secondaryFolder:GetDescendants()) do
+            if obj:IsA("ModuleScript") and obj.Parent and obj.Parent~=secondaryFolder then
+                local info=C.mainModulo and C.mainModulo.QuestsInfo[obj.Name]
+                if type(info)=="table" and type(info.SubQuests)=="table" then
+                    local value={name=obj.Name,island=obj.Parent.Name,category=obj.Parent.Parent and obj.Parent.Parent.Name or "",info=info}
+                    secondary[#secondary+1]=value
+                    secondaryByName[obj.Name]=value
+                end
+            end
+        end
+    end
+    table.sort(secondary,function(a,b)
+        if a.island~=b.island then return a.island<b.island end
+        local l1=tonumber(a.info.MinLevel) or 0
+        local l2=tonumber(b.info.MinLevel) or 0
+        return l1==l2 and a.name<b.name or l1<l2
+    end)
+    R.total=#secondary
+    local function completed(name)
+        if R.sessionDone[name] then return true end
+        local fn=C.mainModulo and C.mainModulo.QuestsUtils
+        if not fn or type(fn.QuestIsCompleted)~="function" then return false end
+        local ok,val=pcall(fn.QuestIsCompleted,player,name)
+        return ok and val~=nil and val~=false and val~=0
+    end
+    local function active(d)
+        local results={}
+        local quests=d and d.Quests and d.Quests.Actives
+        if type(quests)=="table" then
+            for name in pairs(quests) do
+                if secondaryByName[name] and
+                    not name:match("^Vox ") then results[#results+1]=secondaryByName[name] end
+            end
+        end
+        table.sort(results,function(a,b)
+            if a.name==R.name then return true end
+            if b.name==R.name then return false end
+            return a.name<b.name
+        end)
+        return results[1]
+    end
+    local function position(v)
+        return C.posicaoDe(v)
+    end
+    local function npcPosition(actor,root)
+        local points=C.mainModulo and C.mainModulo.InterestPoints
+        if points and type(points.Get)=="function" then
+            local ok,value=pcall(function() return points:Get("Character_"..actor) end)
+            if ok then
+                local pos=position(value)
+                if pos then return pos end
+            end
+        end
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local int=ignore and ignore:FindFirstChild("Int")
+        local play=workspace:FindFirstChild("Playability")
+        local found,best,model=nil,math.huge,nil
+        for _,scope in ipairs({int or false,play or false}) do
+            if scope then
+                local folder=scope:FindFirstChild("NPCs") or scope
+                for _,inst in ipairs(folder:GetDescendants()) do
+                    if (inst:IsA("Model") or inst:IsA("BasePart")) and
+                        (norm(inst.Name)==norm(actor) or norm(inst:GetAttribute("OriginalName"))==norm(actor)) then
+                        local pos=position(inst)
+                        if pos then
+                            local dist=root and (pos-root.Position).Magnitude or 0
+                            if dist<best then found,best,model=pos,dist,inst end
+                        end
+                    end
+                end
+            end
+        end
+        return found,model
+    end
+    local function converseInfo(id,root)
+        local module=converseFolder and converseFolder:FindFirstChild(id)
+        if not module then return nil end
+        local ok,info=pcall(require,module)
+        if not ok or type(info)~="table" then return nil end
+        local actor=info.Actors and info.Actors[1]
+        local pos,model=actor and npcPosition(actor,root) or nil,nil
+        return pos,model,actor
+    end
+    local function stopRoute()
+        if C.getRoute() and C.getRoute().chave=="SecondaryQuest" then C.liberarVoo() end
+    end
+    local function moveTo(pos,near,label)
+        if typeof(pos)~="Vector3" then
+            stopRoute()
+            R.status="Sem localização carregada: "..label
+            return false
+        end
+        local _,root,hum,ok=alive()
+        if not ok then return false end
+        local dest=pos+Vector3.new(0,2.5,0)
+        local dist=(root.Position-dest).Magnitude
+        if dist>near then
+            C.definirDestino(dest,"SecondaryQuest")
+            R.status=label.." ("..math.floor(dist).." studs)"
+            return false
+        end
+        stopRoute()
+        return true
+    end
+    local function travelTo(quest)
+        local island=quest.island
+        R.currentIsland=tostring(C.localAtual() or "")
+        if island=="Treasure Hunt" or island=="Wanted Posters" or island=="Beggar Rescue" or island=="Sky Hermit" then return false end
+        if norm(R.currentIsland)==norm(island) then return false end
+        if C.IslandTeleport.traveling then
+            R.status="Viajando para "..island
+            return true
+        end
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        if not areas or not areas:FindFirstChild(island) then
+            R.status="Mapa não carregado: "..island
+            return true
+        end
+        local _,root,hum,ok=alive()
+        if not ok then return true end
+        local center=areas[island]:GetAttribute("MapCenter")
+        if typeof(center)=="Vector3" and (root.Position-center).Magnitude<600 then return false end
+        if os.clock()-R.lastTravel>28 then
+            R.lastTravel=os.clock()
+            C.IslandTeleport.choose(island)
+            C.IslandTeleport.go()
+            R.status="Auto Quest: viajando até "..island
+        else
+            R.status="Auto Quest: aguardando viagem a "..island
+        end
+        return true
+    end
+    local function nextObjective(quest,d)
+        local qs=d and d.Quests and d.Quests.Actives
+        local rows=qs and qs[quest.name]
+        if type(rows)~="table" then return nil end
+        for stage,step in ipairs(quest.info.SubQuests) do
+            local values=rows[stage] or {}
+            for i,objective in ipairs(step.Objectives or {}) do
+                if (tonumber(values[i]) or 0)<(tonumber(objective.Goal) or 1) then
+                    return objective,stage,i,tonumber(values[i]) or 0
+                end
+            end
+        end
+        return nil
+    end
+    local function objectivePoint(quest,obj)
+        local callable=obj.InterestPoint
+        if type(callable)=="function" then
+            local ok,where=pcall(callable)
+            if ok then
+                local point=position(where)
+                if point then return point end
+                if type(where)=="table" then
+                    for _,value in pairs(where) do
+                        point=position(value)
+                        if point then return point end
+                    end
+                end
+            end
+        else
+            local point=position(callable)
+            if point then return point end
+        end
+        local zoneData=modulePath(workspace,{"IgnoreList","Data","Quests","Zones"})
+        local folder=zoneData and zoneData:FindFirstChild(quest.island)
+        local objId=obj.ObjectiveID
+        if folder and objId then
+            local part=folder:FindFirstChild(objId,true)
+            if part then
+                local point=position(part)
+                if point then return point end
+            end
+            local attr=folder:GetAttribute(objId)
+            if typeof(attr)=="Vector3" then return attr end
+        end
+        return nil
+    end
+    local function findTarget(name,root)
+        if os.clock()-R.lastEnemyScan<.55 and R.lastEnemy
+            and C.valido(R.lastEnemy) then return R.lastEnemy end
+        R.lastEnemyScan=os.clock()
+        local item=C.encontrarInimigo(name,root)
+        if item and C.valido(item) then R.lastEnemy=item;return item end
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local int=ignore and ignore:FindFirstChild("Int")
+        local play=workspace:FindFirstChild("Playability")
+        local best=math.huge
+        for _,base in ipairs({play or false,int or false}) do
+            if base then
+                local folder=base:FindFirstChild("Enemys") or base:FindFirstChild("Enemies")
+                if folder then
+                    for _,model in ipairs(folder:GetChildren()) do
+                        if model:IsA("Model") and C.valido(model) then
+                            local r=C.rootInimigo(model)
+                            local actor=norm(model.Name)
+                            local wanted=norm(name)
+                            if r and (actor==wanted or actor==wanted.."history" or
+                                norm(model:GetAttribute("EnemyName"))==wanted) then
+                                local dist=(r.Position-root.Position).Magnitude
+                                if dist<best then best=dist;item=model end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        R.lastEnemy=item
+        return item
+    end
+    local function attack(quest,obj,pos)
+        local name=tostring(obj.ObjectiveID):gsub("^Defeat_","")
+        local _,root,hum,ok=alive()
+        if not ok then return end
+        local enemy=findTarget(name,root)
+        local er=enemy and C.rootInimigo(enemy)
+        if not er then
+            if pos then moveTo(pos,7,"Procurando "..name) else
+                R.status="Aguardando inimigo "..name.." carregar" end
+            return
+        end
+        if not moveTo(er.Position+Vector3.new(0,2.5,0),8,"Atacando "..name) then return end
+        local tool=C.equiparArma()
+        if not tool then
+            local bp=player:FindFirstChildOfClass("Backpack")
+            local candidate=bp and bp:FindFirstChild("Combat")
+            if candidate then
+                pcall(function() hum:EquipTool(candidate) end)
+                tool=candidate.Parent==player.Character and candidate or nil
+            end
+        end
+        if not tool then R.status="Equipe uma espada ou Combat para derrotar "..name;return end
+        once("SQAttack",.17,function()
+            tool:Activate()
+            if C.CombatEvent then C.CombatEvent:FireServer("Activate",tool.Name) end
+            R.status="Derrotando "..name
+        end)
+    end
+    local function doTalk(obj,pos)
+        local id=tostring(obj.ObjectiveID or "")
+        local spec=TALK[id]
+        local key=spec and spec[1] or id:match("^Talk_([%w]+)")
+        if not key then R.status="Conversa sem NPC: "..id;return end
+        local _,root,hum,ok=alive()
+        if not ok then return end
+        local npcPos=converseInfo(key,root)
+        local target=npcPos or pos
+        if not moveTo(target,7,"Indo conversar: "..key) then return end
+        local action=spec and spec[2] or "Talk"
+        once("SQTalk:"..id,5,function()
+            server("Elysium_Converse",key,action)
+            R.status="Conversando com "..key.." ("..action..")"
+        end)
+    end
+    local function doZone(quest,obj,pos)
+        local id=tostring(obj.ObjectiveID or "")
+        if not zoneModules[id] then
+            if pos then moveTo(pos,5,"Indo ao objetivo "..id) end
+            R.status="Ação especial pendente: "..id
+            return
+        end
+        if not moveTo(pos,5,"Interagindo com "..id) then return end
+        once("SQZone:"..id,4.5,function()
+            if server("QuestZones",id,"Start") then
+                task.delay(1.65,function()
+                    if not R.enabled or not C.running() then return end
+                    local d=data()
+                    local q=active(d)
+                    local pending=q and nextObjective(q,d)
+                    if pending and pending.ObjectiveID==id then
+                        server("QuestZones",id,"Use")
+                    end
+                end)
+                R.status="Coletando / acionando "..id
+            end
+        end)
+    end
+    local function startQuest(quest)
+        if quest.category=="Wanted Posters" then
+            local _,root,hum,ok=alive()
+            if not ok then return end
+            local ignore=workspace:FindFirstChild("IgnoreList")
+            local folder=ignore and ignore:FindFirstChild("Int")
+            local marker=folder and folder:FindFirstChild("WantedBoard",true)
+            if not marker then marker=workspace:FindFirstChild("WantedBoard",true) end
+            local point=position(marker)
+            if not moveTo(point,12,"Indo ao quadro de procurados") then return end
+            once("SQStart:"..quest.name,8,function()
+                C.enviarQuest("AcceptWanted",quest.name)
+                R.status="Solicitando recompensa: "..quest.name
+            end)
+            return
+        end
+        local npc=NPC[quest.name]
+        if not npc then
+            R.status="Missão sem início automático identificado no ZIP: "..quest.name
+            R.skipped[quest.name]=os.clock()+60
+            return
+        end
+        local _,root,hum,ok=alive()
+        if not ok then return end
+        local converse,actor,action=table.unpack(npc)
+        local pos=npcPosition(actor,root)
+        if not pos then pos=converseInfo(converse,root) end
+        if not moveTo(pos,7,"Indo ao NPC "..actor) then
+            if not pos then R.skipped[quest.name]=os.clock()+25 end
+            return
+        end
+        once("SQStart:"..quest.name,8,function()
+            server("Elysium_Converse",converse,action)
+            R.status="Aceitando "..quest.name.." com "..actor
+        end)
+    end
+    local function restoreFishing()
+        if R.busyFishing then
+            R.busyFishing=false
+            C.mudarAutoFishing(false)
+            C.mudarAutoCastFishing(false)
+        end
+    end
+    local function step()
+        if not R.enabled or not C.running() then return end
+        if C.State.AutoBoss or C.State.AutoRaid or C.State.AutoSeaBeast
+            or C.State.AutoFarmQuest or C.State.AutoFarmFruit
+            or C.State.AutoHaki or C.FeatureState.islandTraveling then
+            if C.FeatureState.islandTraveling then
+                R.status="Viajando entre ilhas"
+            else
+                R.status="Auto Quest pausado por outra atividade"
+                stopRoute()
+            end
+            return
+        end
+        local d=data()
+        local _,root,hum,ok=alive()
+        if not d or not ok then R.status="Aguardando dados/personagem";return end
+        local quest=active(d)
+        if not quest then
+            if R.name and not R.sessionDone[R.name] and completed(R.name) then
+                R.sessionDone[R.name]=true
+                R.completed+=1
+            end
+            local sameLocation=tostring(C.localAtual() or "")
+            local best,score=nil,math.huge
+            for _,entry in ipairs(secondary) do
+                if entry.name~="Vox Sense Training" and entry.name~="Vox Armor Training"
+                    and entry.name~="Vox Sense Mastery" and entry.name~="Vox Armor Mastery"
+                    and entry.category~="Treasure Hunt" and entry.category~="Beggar Rescue"
+                    and (NPC[entry.name] or entry.category=="Wanted Posters")
+                    and (tonumber(entry.info.MinLevel) or 0)<=C.lerNivel(d)
+                    and not R.sessionDone[entry.name]
+                    and (entry.info.IsRepeatable or not completed(entry.name))
+                    and os.clock()>=(R.skipped[entry.name] or 0) then
+                    local extra=norm(entry.island)==norm(sameLocation) and 0 or 500
+                    if entry.category=="Wanted Posters" then extra+=800 end
+                    local value=extra+(tonumber(entry.info.MinLevel) or 0)*.15
+                    if value<score then best,score=entry,value end
+                end
+            end
+            if not best then
+                R.status="Sem quests secundárias iniciáveis disponíveis (nível / NPC / mapa)"
+                R.name=nil
+                stopRoute()
+                return
+            end
+            R.name=best.name
+            R.objective="Iniciar"
+            restoreFishing()
+            if travelTo(best) then return end
+            startQuest(best)
+            return
+        end
+        if R.name~=quest.name then
+            R.name=quest.name
+            R.lastEnemy=nil
+            R.objective=nil
+        end
+        R.currentIsland=tostring(C.localAtual() or "")
+        local obj,stage,index,count=nextObjective(quest,d)
+        if not obj then
+            restoreFishing()
+            R.status="Aguardando conclusão/recompensa: "..quest.name
+            stopRoute()
+            return
+        end
+        local id=tostring(obj.ObjectiveID or "")
+        R.objective=id
+        R.progress=tostring(count).."/"..tostring(obj.Goal or "?")
+        if travelTo(quest) then return end
+        local pos=objectivePoint(quest,obj)
+        if id:sub(1,7)=="Defeat_" then
+            restoreFishing()
+            attack(quest,obj,pos)
+        elseif id:sub(1,5)=="Talk_" then
+            restoreFishing()
+            doTalk(obj,pos)
+        elseif zoneModules[id] then
+            restoreFishing()
+            doZone(quest,obj,pos)
+        elseif id=="Catch_Fish" then
+            if not pos then R.status="Local da pesca não carregado";return end
+            if not C.encontrarVaraPesca() then
+                R.status="Precisa de Fishing Rod para "..quest.name
+                return
+            end
+            if moveTo(pos,13,"Indo pescar para "..quest.name) then
+                stopRoute()
+                R.busyFishing=true
+                if not C.State.AutoFishing then C.mudarAutoFishing(true) end
+                if not C.State.AutoCastFishing then C.mudarAutoCastFishing(true) end
+                R.status="Pescando para "..quest.name.." | "..R.progress
+            end
+        elseif pos then
+            restoreFishing()
+            if moveTo(pos,5,"Indo completar "..id) then
+                R.status="Aguardando interação especial: "..id
+            end
+        else
+            restoreFishing()
+            R.status="Objetivo especial sem posição carregada: "..id
+            stopRoute()
+        end
+    end
+    function R.setAuto(v)
+        R.enabled=v==true
+        C.State.AutoSecondary=R.enabled
+        if R.enabled then
+            if C.State.AutoFarmQuest then C.definirFarm(false) end
+            if C.State.AutoFarmFruit then C.definirFarmFruta(false) end
+            if C.State.AutoHaki then C.VoxHaki.setFullAuto(false) end
+            if C.State.AutoRaid then C.Raid.setAuto(false) end
+            if C.State.AutoBoss then C.BossFarm.setAuto(false) end
+            if C.State.AutoSeaBeast then C.Sea.setAuto(false) end
+            R.status="Procurando quests secundárias ("..R.total.." no catálogo)"
+        else
+            restoreFishing()
+            stopRoute()
+            R.status="Desligado"
+        end
+    end
+    function R.stop()
+        R.setAuto(false)
+    end
+    task.spawn(function()
+        while C.running() do
+            if R.enabled then
+                local ok,err=pcall(step)
+                if not ok then
+                    R.failures+=1
+                    R.status="Erro quest secundária: "..tostring(err)
+                    if R.failures%7==1 then warn("[GR Secondary Quest]",err) end
+                end
+            end
+            task.wait(R.enabled and .23 or 1.4)
+        end
+        R.stop()
+    end)
+    return R
+end
