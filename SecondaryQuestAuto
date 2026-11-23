@@ -1136,7 +1136,7 @@ return function(C)
         elseif travelTo(quest) then return end
         local pos,marker=objectivePoint(quest,obj)
         if marker and id:sub(1,7)~="Defeat_" and
-            id:sub(1,5)~="Talk_" and interactDoor(pos,marker) then
+            interactDoor(pos,marker) then
             return
         end
         if id:sub(1,7)=="Defeat_" then
