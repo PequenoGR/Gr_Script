@@ -5408,6 +5408,7 @@ local okSecondary,errSecondary=pcall(function()
         valido=valido,
         equiparArma=equiparArma,
         enviarQuest=enviarQuest,
+        interagirNPC=interagirNPC,
         definirFarm=definirFarm,
         definirFarmFruta=definirFarmFruta,
         encontrarVaraPesca=encontrarVaraPesca,
