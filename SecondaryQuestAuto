@@ -23,7 +23,9 @@ return function(C)
         clownStartUntil=0,clownInputWindow="-",
         interactionTarget="-",interactionMode="-",interactionDistance=nil,
         interactionAttempts=0,zoneAttempts=0,zoneStatus="-",desertStatus="-",
-        doorAttempts=0,doorStatus="-",npcAlias="-"
+        doorAttempts=0,doorStatus="-",npcAlias="-",
+        phantomLever=0,phantomAttempts=0,phantomDistance=nil,
+        phantomAction="-",phantomStatus="-",phantomObjectFound=false
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
@@ -921,6 +923,93 @@ return function(C)
         end
         return interacted
     end
+    local function phantomQuestParts()
+        return modulePath(workspace,{"Map","Areas","Golden Dunes","SoruMiniGame","Quest"})
+    end
+    local function phantomLever(index)
+        local questFolder=phantomQuestParts()
+        local levers=questFolder and questFolder:FindFirstChild("Levers")
+        if not levers then return nil end
+        for _,lever in ipairs(levers:GetChildren()) do
+            if lever:IsA("Model") and tonumber(lever:GetAttribute("Index"))==index then
+                local knob=lever:FindFirstChild("Cube.002",true)
+                local handle=lever:FindFirstChild("Madeira",true)
+                if knob and knob:IsA("BasePart") then return lever,knob.Position end
+                if handle and handle:IsA("BasePart") then return lever,handle.Position end
+                return lever,lever:GetPivot().Position
+            end
+        end
+        return nil
+    end
+    local function phantomObjective(quest,obj)
+        if quest.name~="The Phantom Tablet" then return false end
+        local id=tostring(obj.ObjectiveID or "")
+        local index=tonumber(id:match("^Pull_PhantomLever_SQ_(%d+)$"))
+        local action
+        local point
+        if index then
+            local model
+            model,point=phantomLever(index)
+            R.phantomObjectFound=model~=nil
+            R.phantomLever=index
+            action="Pull"
+            if not model then
+                R.phantomStatus="Alavanca "..index.." indisponível em SoruMiniGame.Quest.Levers"
+                R.status=R.phantomStatus
+                return true
+            end
+        else
+            local name=({
+                Enter_PhantomRuins_SQ="TeleportEntryPart",
+                Take_PhantomTablet_SQ="SoruTabulet",
+                Investigate_PhantomRuins_SQ="TeleportBackPart",
+                Escape_PhantomRuins_SQ="TeleportBackPart"
+            })[id]
+            action=({
+                Enter_PhantomRuins_SQ="Enter",
+                Take_PhantomTablet_SQ="Take",
+                Investigate_PhantomRuins_SQ="Leave",
+                Escape_PhantomRuins_SQ="Leave"
+            })[id]
+            if not name then return false end
+            local model=phantomQuestParts()
+            local part=model and model:FindFirstChild(name)
+            R.phantomObjectFound=part~=nil
+            if not part then
+                R.phantomStatus="Objeto "..name.." não carregado"
+                R.status=R.phantomStatus
+                return true
+            end
+            point=position(part)
+            if not point then
+                R.phantomStatus="Sem posição para "..name
+                R.status=R.phantomStatus
+                return true
+            end
+        end
+        R.desertStatus=id
+        R.phantomAction=action
+        local _,root,hum,ok=alive()
+        if not ok then return true end
+        R.phantomDistance=math.floor((root.Position-point).Magnitude*10)/10
+        local reach=index and 5.2 or (action=="Take" and 4.5 or 3.8)
+        if not moveTo(point,reach,"Phantom Tablet: "..(index and ("alavanca "..index.."/3") or action)) then
+            R.phantomStatus="Aproximando de "..tostring(action).." ("..R.phantomDistance.." studs)"
+            return true
+        end
+        local key="SQPhantom:"..id
+        once(key,index and 2.5 or 2.25,function()
+            R.phantomAttempts+=1
+            local payload={GameAction=action}
+            if index then payload.Index=index end
+            if server("MinigamesService","TempleRun",payload) then
+                R.phantomStatus=action.." enviado para TempleRun; índice "..tostring(index or "-")..
+                    " | tentativa "..R.phantomAttempts
+                R.status=R.phantomStatus
+            end
+        end)
+        return true
+    end
     local function doZone(quest,obj,pos)
         local id=tostring(obj.ObjectiveID or "")
         if not zoneModules[id] then
@@ -1165,6 +1254,10 @@ return function(C)
         elseif targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
         elseif travelTo(quest) then return end
+        if quest.name=="The Phantom Tablet" and phantomObjective(quest,obj) then
+            restoreFishing()
+            return
+        end
         local pos,marker=objectivePoint(quest,obj)
         if marker and id:sub(1,7)~="Defeat_" and
             interactDoor(pos,marker) then
