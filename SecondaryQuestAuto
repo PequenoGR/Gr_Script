@@ -429,6 +429,182 @@ return function(C)
             R.status="Derrotando "..name
         end)
     end
+    local tomatoManager
+    local tomatoInput
+    pcall(function()
+        local src=modulePath(RS,{"Modules","Addons","MinigamesSystem"})
+        if src then
+            local ok,lib=pcall(require,src)
+            if ok and type(lib)=="table" then tomatoManager=lib.IsClient end
+        end
+        tomatoInput=game:GetService("VirtualInputManager")
+    end)
+    local function pressTomato(side)
+        if side=="A" then side="Left" elseif side=="D" then side="Right" end
+        if side~="Left" and side~="Right" then return false end
+        local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
+        local button=gui and gui:FindFirstChild(side.."Touch",true)
+        if button and button:IsA("GuiButton") and button.Visible then
+            if type(getconnections)=="function" then
+                local ok,connections=pcall(getconnections,button.MouseButton1Down)
+                if ok and type(connections)=="table" then
+                    for _,conn in ipairs(connections) do
+                        local fired=pcall(function() conn:Fire() end)
+                        if not fired then
+                            local cb
+                            pcall(function() cb=conn.Function end)
+                            if type(cb)=="function" then fired=pcall(cb) end
+                        end
+                        if fired then
+                            R.tomatoInputs+=1
+                            R.tomatoStatus="Bobo: toque "..side.." por conexão"
+                            return true
+                        end
+                    end
+                end
+            end
+            if type(firesignal)=="function" and pcall(firesignal,button.MouseButton1Down) then
+                R.tomatoInputs+=1
+                R.tomatoStatus="Bobo: toque "..side.." por sinal"
+                return true
+            end
+            if tomatoInput then
+                local p,z=button.AbsolutePosition,button.AbsoluteSize
+                local x,y=math.floor(p.X+z.X*.5),math.floor(p.Y+z.Y*.5)
+                local ok=pcall(function()
+                    tomatoInput:SendMouseButtonEvent(x,y,0,true,game,0)
+                    tomatoInput:SendMouseButtonEvent(x,y,0,false,game,0)
+                end)
+                if ok then
+                    R.tomatoInputs+=1
+                    R.tomatoStatus="Bobo: toque virtual "..side
+                    return true
+                end
+            end
+        end
+        if tomatoInput then
+            local key=side=="Left" and Enum.KeyCode.A or Enum.KeyCode.D
+            local ok=pcall(function()
+                tomatoInput:SendKeyEvent(true,key,false,game)
+                tomatoInput:SendKeyEvent(false,key,false,game)
+            end)
+            if ok then
+                R.tomatoInputs+=1
+                R.tomatoStatus="Bobo: tecla virtual "..side
+                return true
+            end
+        end
+        R.tomatoStatus="Delta: não conseguiu pressionar "..side
+        return false
+    end
+    local function watchTomato()
+        if R.tomatoConnection or not C.dadosModulo or not C.dadosModulo.Network
+            or type(C.dadosModulo.Network.OnClientEvent)~="function" then return end
+        local ok,conn=pcall(function()
+            return C.dadosModulo.Network.OnClientEvent("MinigamesService",function(action,payload)
+                if not C.running() or type(payload)~="table" then return end
+                if action=="Start" and payload.name=="Dodge"
+                    and type(payload.data)=="table" and payload.data.Mode=="Tomatoes" then
+                    R.tomatoSession={
+                        info=payload.data,started=os.clock(),next=1,
+                        seen={},lastVisual=nil
+                    }
+                    R.tomatoMiniActive=true
+                    R.tomatoStatus="Bobo: minigame iniciado"
+                elseif (action=="Stop" or action=="StopAll")
+                    and (payload.name==nil or payload.name=="Dodge") then
+                    R.tomatoSession=nil
+                    R.tomatoMiniActive=false
+                end
+            end)
+        end)
+        if ok then R.tomatoConnection=conn end
+    end
+    watchTomato()
+    local function playTomatoes()
+        if not R.enabled or R.name~="The Great Show"
+            or R.objective~="Dodge_Tomatoes_SQ" then return end
+        local active=tomatoManager and tomatoManager.Active
+        if not active or active.Name~="Dodge" then
+            R.tomatoMiniActive=false
+            return
+        end
+        R.tomatoMiniActive=true
+        local session=R.tomatoSession
+        if not session then
+            R.tomatoStatus="Bobo: minigame ativo; aguardando eventos"
+            return
+        end
+        local info=session.info
+        if info.Mode~="Tomatoes" then return end
+        local schedule=info.Schedule
+        if type(schedule)=="table" and #schedule>0 then
+            local note=schedule[session.next]
+            if type(note)~="table" then return end
+            local now=os.clock()-session.started
+            local arrival=(tonumber(note.SpawnTime) or 0)+(tonumber(info.Travel) or .6)
+            local due=arrival-(info.Touch and .08 or .025)
+            local stop=arrival+.22
+            if now>=due and now<=stop and
+                now-(session.seen[session.next] or -100)>.15 then
+                session.seen[session.next]=now
+                if pressTomato(note.Side or note.Key) then
+                    R.tomatoNote=session.next
+                    R.status="Bobo: desviando tomate "..session.next.."/"..#schedule
+                    session.next+=1
+                end
+            elseif now>stop then
+                R.tomatoNote=session.next
+                session.next+=1
+            end
+            return
+        end
+        local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
+        local hint=gui and gui:FindFirstChild("KeyHint",true)
+        local letter=hint and hint:FindFirstChild("Letter",true)
+        local fill=hint and hint:FindFirstChild("Fill",true)
+        if not letter or not fill then return end
+        local word=tostring(letter.Text):upper():gsub("%s+","")
+        local direction=({A="Left",D="Right",LEFT="Left",RIGHT="Right"})[word]
+        local progress=fill.Size.X.Scale
+        if progress<.5 then session.lastVisual=nil end
+        if direction and progress>=.88 and progress<=1.08
+            and session.lastVisual~=word then
+            if pressTomato(direction) then
+                session.lastVisual=word
+                R.tomatoNote+=1
+                R.status="Bobo: esquivando tomates por imagem"
+            end
+        end
+    end
+    task.spawn(function()
+        while C.running() do
+            if R.enabled and R.objective=="Dodge_Tomatoes_SQ" then
+                local ok,err=pcall(playTomatoes)
+                if not ok then
+                    R.failures+=1
+                    R.tomatoStatus="Erro no show: "..tostring(err)
+                end
+            end
+            task.wait(R.enabled and .025 or .9)
+        end
+    end)
+    local function startTomatoShow(pos)
+        local _,root,hum,ok=alive()
+        if not ok then return end
+        local npcPos=converseInfo("TomatoClown",root)
+        local target=pos or npcPos
+        if not moveTo(target,6,"Indo ao Bobo (Tomato Clown)") then return end
+        once("SQClownStartShow",1.5,function()
+            if server("Elysium_Converse","TomatoClown","StartShow") then
+                R.npcRequests+=1
+                R.tomatoAttempts+=1
+                R.npcStatus="TomatoClown / StartShow"
+                R.tomatoStatus="StartShow enviado ao Bobo"
+                R.status="Bobo: iniciando show de tomates"
+            end
+        end)
+    end
     local function doTalk(obj,pos)
         local id=tostring(obj.ObjectiveID or "")
         local spec=TALK[id]
@@ -649,6 +825,8 @@ return function(C)
         end
         if R.name~=quest.name then
             R.name=quest.name
+            R.tomatoSession=nil
+            R.tomatoMiniActive=false
             R.lastEnemy=nil
             R.lastEnemyName=nil
             R.objective=nil
@@ -686,6 +864,14 @@ return function(C)
         if id:sub(1,7)=="Defeat_" then
             restoreFishing()
             attack(quest,obj,pos)
+        elseif id=="Dodge_Tomatoes_SQ" then
+            restoreFishing()
+            local activeMinigame=tomatoManager and tomatoManager.Active
+            if activeMinigame and activeMinigame.Name=="Dodge" then
+                R.status="Bobo: completando automaticamente o desafio dos tomates"
+            else
+                startTomatoShow(pos)
+            end
         elseif id:sub(1,5)=="Talk_" then
             restoreFishing()
             doTalk(obj,pos)
