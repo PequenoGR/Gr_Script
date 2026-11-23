@@ -1789,6 +1789,13 @@ local function atualizarLancamentoPesca()
         task.wait(0.15)
     end
     if vara.Parent==player.Character then
+        if State.AutoHaki and typeof(FeatureState.hakiFishingLookAt)=="Vector3" then
+            local point=FeatureState.hakiFishingLookAt
+            local direction=Vector3.new(point.X-root.Position.X,0,point.Z-root.Position.Z)
+            if direction.Magnitude>.1 then
+                pcall(function() root.CFrame=CFrame.lookAt(root.Position,root.Position+direction) end)
+            end
+        end
         local ok=pcall(function() vara:Activate() end)
         FeatureState.statusPesca=ok and "Lançando vara; aguardando peixe" or "Falha ao lançar vara"
     else
@@ -4010,6 +4017,7 @@ local VoxHaki = (function()
         fullAuto=true,autoTrack=false,status="Auto Haki Completo ativado",lastRequest=-100,lastToggle={},
         autoMini=false,autoMiniStart=false,autoMiniFishing=false,
         managedFish=false,savedFishing=false,savedCastFishing=false,fishStatus="-",
+        fishingReady=false,fishBank=nil,fishMarker=nil,shoreCache=nil,
         miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
         miniLastStart=-100,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
@@ -4503,6 +4511,11 @@ local VoxHaki = (function()
             V.fishStatus="Aguardando etapa de 10 peixes do Vox Sense"
             return
         end
+        if V.fullAuto and not V.fishingReady then
+            restoreHakiFishing()
+            V.fishStatus="Aguardando margem segura e Fishing Rod"
+            return
+        end
         if State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or
             State.AutoFarmQuest or FeatureState.islandTraveling then
             V.fishStatus="Pesca do Haki pausada por outro farm"
@@ -4637,25 +4650,62 @@ local VoxHaki = (function()
     local function moveHakiTo(position,near,description)
         local _,root,hum=character()
         if not root or not hum or hum.Health<=0 then return false end
-        local target=position
-        if typeof(target)~="Vector3" then
-            local area=skullArea()
-            target=area and area:GetAttribute("MapCenter")
-            if typeof(target)~="Vector3" then
-                V.status="Skull Island ainda não está carregada"
-                return false
-            end
-            near=120
-            description="Carregando Skull Island / "..tostring(description)
+        if typeof(position)~="Vector3" then
+            stopHakiRoute()
+            V.status="Auto Haki: marcador não encontrado para "..tostring(description)
+            return false
         end
+        local target=position+Vector3.new(0,2.5,0)
         local distance=(root.Position-target).Magnitude
-        if distance>near then
-            definirDestino(target+Vector3.new(0,2.5,0),"VoxAuto")
+        local arrival=math.clamp(tonumber(near) or 5,2,5.5)
+        if distance>arrival then
+            definirDestino(target,"VoxAuto")
             V.status="Auto Haki: "..description.." ("..math.floor(distance).." studs)"
             return false
         end
         stopHakiRoute()
         return true
+    end
+    local function fishShorePoint(marker)
+        if typeof(marker)~="Vector3" then return nil end
+        if V.shoreCache and (V.shoreCache.marker-marker).Magnitude<5
+            and os.clock()-V.shoreCache.time<12 then
+            return V.shoreCache.position
+        end
+        local map=workspace:FindFirstChild("Map")
+        if not map then return nil end
+        local _,root=character()
+        local area=skullArea()
+        local altitude=area and area:GetAttribute("MapAltitude")
+        local top=math.max(marker.Y,tonumber(altitude) or marker.Y)+400
+        local params=RaycastParams.new()
+        params.FilterType=Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances={map,workspace.Terrain}
+        params.IgnoreWater=false
+        local oceanHit=workspace:Raycast(Vector3.new(marker.X,top,marker.Z),
+            Vector3.new(0,-850,0),params)
+        local oceanLevel=oceanHit and oceanHit.Material==Enum.Material.Water
+            and oceanHit.Position.Y or nil
+        local nearest,best=nil,math.huge
+        for _,radius in ipairs({10,18,28,40,55,75,100,130}) do
+            for n=0,15 do
+                local angle=n*math.pi/8
+                local x=marker.X+math.cos(angle)*radius
+                local z=marker.Z+math.sin(angle)*radius
+                local hit=workspace:Raycast(Vector3.new(x,top,z),
+                    Vector3.new(0,-850,0),params)
+                if hit and hit.Material~=Enum.Material.Water
+                    and hit.Normal.Y>.55
+                    and (not oceanLevel or hit.Position.Y>oceanLevel+1.5) then
+                    local point=hit.Position
+                    local score=radius+(root and (root.Position-point).Magnitude*.04 or 0)
+                    if score<best then nearest=point;best=score end
+                end
+            end
+            if nearest then break end
+        end
+        V.shoreCache={marker=marker,position=nearest,time=os.clock()}
+        return nearest
     end
     local function hakiFree()
         return not (State.AutoBoss or State.AutoSeaBeast or State.AutoRaid
@@ -4738,6 +4788,8 @@ local VoxHaki = (function()
         local _,root,hum=character()
         if not root or not hum or hum.Health<=0 or not data then return end
         local quest=activeQuest(data)
+        V.fishingReady=false
+        FeatureState.hakiFishingLookAt=nil
         if not quest then
             local sense,armor=levels(data)
             local candidate=sense<1 or armor<1
@@ -4784,22 +4836,53 @@ local VoxHaki = (function()
         elseif objective=="Defeat_AskardHistory" then
             autoFight("Askard",trainerPosition())
         elseif objective=="Collect_WaterBarrel_HK" then
-            local pos=skullMarker("Zones","Collect_WaterBarrel_HK")
-            if not pos then
-                local area=skullArea()
-                local model=area and area:FindFirstChild("Poço",true)
-                pos=posicaoDe(model)
-            end
-            if moveHakiTo(pos,7,"pegando água no poço") then
-                autoAction(objective,4,function()
-                    dadosModulo.Network:FireServer("QuestZones",objective,"Use")
-                    V.status="Auto Haki: enchendo o barril"
+            local area=skullArea()
+            local instances=area and area:FindFirstChild("Instances")
+            local well=instances and instances:FindFirstChild("Poço")
+            local pos=posicaoDe(well) or skullMarker("Zones","Collect_WaterBarrel_HK")
+            if moveHakiTo(pos,4,"indo ao poço da Skull Island") then
+                autoAction(objective,5,function()
+                    if dadosModulo and dadosModulo.Network then
+                        dadosModulo.Network:FireServer("QuestZones",objective,"Start")
+                        task.delay(1.25,function()
+                            if not running() or not V.fullAuto or not objectiveActive(objective) then return end
+                            local _,r=character()
+                            if not r or (r.Position-pos).Magnitude>12 then return end
+                            pcall(function()
+                                dadosModulo.Network:FireServer("QuestZones",objective,"Use")
+                            end)
+                        end)
+                        V.status="Auto Haki: enchendo o barril"
+                    end
                 end)
             end
         elseif objective=="Catch_Fish" then
-            if moveHakiTo(skullMarker("InterestPoints","FishingSpot_HK"),15,
-                "indo ao ponto de pesca") then
-                V.status="Auto Haki: pescando para Vox Sense"
+            local marker=skullMarker("InterestPoints","FishingSpot_HK")
+            V.fishMarker=marker
+            if not encontrarVaraPesca() then
+                V.fishingReady=false
+                if moveHakiTo(trainerPosition(),5,"buscando vara com Askard") then
+                    autoAction("HakiGetRod",12,function()
+                        network(nil)
+                        V.status="Auto Haki: tentando receber Fishing Rod de Askard"
+                    end)
+                end
+            else
+                local bank=fishShorePoint(marker)
+                V.fishBank=bank
+                if not bank then
+                    stopHakiRoute()
+                    V.status="Auto Haki: sem margem segura carregada"
+                elseif moveHakiTo(bank,4,"indo à margem segura para pescar") then
+                    local _,_,hum=character()
+                    if hum and hum:GetState()==Enum.HumanoidStateType.Swimming then
+                        V.status="Auto Haki: aguardando sair da água"
+                    else
+                        V.fishingReady=true
+                        FeatureState.hakiFishingLookAt=marker
+                        V.status="Auto Haki: pescando os 10 peixes Vox Sense"
+                    end
+                end
             end
         elseif objective:find("^Break_Stone_HK_") or objective=="Train_VoxArmor_VX" then
             local n=tonumber(objective:match("_(%d+)$"))
