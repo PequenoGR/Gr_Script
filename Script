@@ -4021,6 +4021,7 @@ local VoxHaki = (function()
         fishingHover=nil,fishingHoverPosition=nil,fishingHoverRoot=nil,
         miniStatus="Desligado",
         miniInputs=0,miniStarts=0,miniSession=nil,miniConnection=nil,
+        miniKeyAttempts=0,miniKeyFailures=0,miniLastKey="-",miniInputMethod="-",miniMode="-",
         miniLastStart=-100,miniManager=nil,miniSeen={},miniHeld=false,miniLastPress=0,
         lastTracked=nil,requests=0,lastError=0
     }
@@ -4336,35 +4337,73 @@ local VoxHaki = (function()
         local size=button.AbsoluteSize
         local p=button.AbsolutePosition
         if size.X<3 or size.Y<3 then return false end
-        local x=math.floor(p.X+size.X*.5)
-        local y=math.floor(p.Y+size.Y*.5)
-        local ok=false
-        if type(firesignal)=="function" then
-            ok=pcall(function() firesignal(button.MouseButton1Down) end)
+        local signal=button.MouseButton1Down
+        if type(getconnections)=="function" then
+            local ok,connections=pcall(getconnections,signal)
+            if ok and type(connections)=="table" then
+                for _,conn in ipairs(connections) do
+                    if conn.Enabled~=false then
+                        local fired=pcall(function() conn:Fire() end)
+                        if not fired then
+                            local fn
+                            pcall(function() fn=conn.Function end)
+                            if type(fn)=="function" then fired=pcall(fn) end
+                        end
+                        if fired then
+                            V.miniInputs+=1
+                            V.miniInputMethod="Conexão do botão"
+                            return true
+                        end
+                    end
+                end
+            end
         end
-        if not ok and miniVim then
-            ok=pcall(function()
+        if type(firesignal)=="function" then
+            local ok=pcall(firesignal,signal)
+            if ok then
+                V.miniInputs+=1
+                V.miniInputMethod="firesignal"
+                return true
+            end
+        end
+        if miniVim then
+            local x=math.floor(p.X+size.X*.5)
+            local y=math.floor(p.Y+size.Y*.5)
+            local ok=pcall(function()
                 miniVim:SendMouseButtonEvent(x,y,0,true,game,0)
                 miniVim:SendMouseButtonEvent(x,y,0,false,game,0)
             end)
+            if ok then
+                V.miniInputs+=1
+                V.miniInputMethod="Toque simulado"
+                return true
+            end
         end
-        if ok then V.miniInputs+=1 end
-        return ok
+        return false
     end
     local function miniInput(key,mode)
         if key=="A" then key="Left" elseif key=="D" then key="Right" end
+        if type(key)~="string" then return false end
+        V.miniKeyAttempts+=1
+        V.miniLastKey=key
         local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
         local btn
         if gui then
             if key=="Left" or key=="Right" then
                 btn=gui:FindFirstChild(key.."Touch",true)
-            elseif type(key)=="string" then
+            else
                 btn=gui:FindFirstChild(key.."Pad",true)
             end
         end
         if btn and tap(btn) then return true end
         local codes={Left="A",Right="D"}
-        return sendKey(codes[key] or key)
+        if sendKey(codes[key] or key) then
+            V.miniInputMethod="Tecla virtual"
+            return true
+        end
+        V.miniKeyFailures+=1
+        V.miniInputMethod="Nenhum método disponível"
+        return false
     end
     local function minigameInfo()
         local root=RS:FindFirstChild("Modules")
@@ -4388,9 +4427,10 @@ local VoxHaki = (function()
                     local info=payload.data
                     V.miniSession={
                         name=payload.name,id=payload.id,info=type(info)=="table" and info or {},
-                        started=os.clock(),next=1,seen={},wasPressed=false
+                        started=os.clock(),next=1,seen={},wasPressed=false,clockSynced=false
                     }
-                    V.miniStatus="Minigame detectado: "..payload.name
+                    V.miniMode=type(info)=="table" and tostring(info.Mode or "Stones") or "-"
+                    V.miniStatus="Minigame detectado: "..payload.name.." ("..V.miniMode..")"
                 elseif action=="Stop" or action=="StopAll" then
                     V.miniSession=nil
                     V.miniHeld=false
@@ -4440,59 +4480,76 @@ local VoxHaki = (function()
         end
     end
     local function doDodge()
-        if not hakiObjective("Dodge") then
-            V.miniStatus="Dodge sem missão Vox ativa"
-            return
-        end
+        if not V.fullAuto and not V.autoMini and not hakiObjective("Dodge") then return end
         local gui=player.PlayerGui:FindFirstChild("DodgeMinigameGui")
         if not gui or not gui.Enabled or gui:FindFirstChild("Result",true) then return end
         local session=V.miniSession
         if not session then return end
         local info=session.info or {}
-        local mode=info.Mode or "Stones"
+        local mode=tostring(info.Mode or (gui:FindFirstChild("KeyPads",true) and "Spar" or "Stones"))
+        V.miniMode=mode
         local schedule=info.Schedule
         if type(schedule)=="table" and #schedule>0 then
+            if not session.clockSynced then
+                session.started=os.clock()
+                session.clockSynced=true
+                session.next=1
+                session.noteAttempts={}
+            end
             local now=os.clock()-session.started
             local note=schedule[session.next]
             if type(note)=="table" then
                 local spawn=tonumber(note.SpawnTime) or 0
                 local travel=tonumber(info.Travel) or 0.6
-                local when=mode=="Spar" and math.max(spawn+.1,spawn+travel-.12)
-                    or spawn+travel-(info.Touch and .06 or .015)
-                if now>=when then
+                local due=mode=="Spar" and spawn+.16 or spawn+travel-(info.Touch and .08 or .03)
+                local expiration=spawn+travel+(mode=="Spar" and .20 or .27)
+                local last=session.noteAttempts[session.next] or -100
+                if now>=due and now<expiration and now-last>=.17 then
+                    session.noteAttempts[session.next]=now
                     local key=note.Key or note.Side
                     if type(key)=="string" and miniInput(key,mode) then
-                        V.miniStatus="Auto "..mode.." | nota "..session.next.."/"..#schedule
+                        V.miniStatus="Auto "..mode.." "..key.." | "..session.next.."/"..#schedule
                         session.next+=1
-                    elseif now>when+.55 then
-                        session.next+=1
+                    else
+                        V.miniStatus="Auto "..mode..": entrada "..tostring(key).." indisponível"
                     end
+                elseif now>=expiration then
+                    V.miniStatus="Auto "..mode..": nota "..session.next.." expirou"
+                    session.next+=1
                 end
             end
             return
         end
-        local letter=gui:FindFirstChild("Letter",true)
         local keyHint=gui:FindFirstChild("KeyHint",true)
-        local fill=keyHint and keyHint:FindFirstChild("Fill",true)
-        if not letter or not fill then return end
+        local letter=keyHint and keyHint:FindFirstChild("Letter",true)
+        if not letter then return end
+        local word=tostring(letter.Text):upper():gsub("%s+","")
+        local letters={A="Left",LEFT="Left",D="Right",RIGHT="Right",F="F",G="G",H="H"}
+        local key=letters[word]
+        if not key then return end
+        if mode=="Spar" then
+            if word~=session.lastVisualKey or os.clock()-(session.lastVisualPress or -100)>.38 then
+                if miniInput(key,mode) then
+                    session.lastVisualKey=word
+                    session.lastVisualPress=os.clock()
+                    V.miniStatus="Auto Spar visual: "..word
+                end
+            end
+            return
+        end
+        local fill=keyHint:FindFirstChild("Fill",true)
+        if not fill then return end
         local progress=fill.Size.X.Scale
         if progress<.58 then
             session.wasPressed=false
             return
         end
         local threshold=mode=="Blind" and .93 or .90
-        if progress>=threshold and progress<=1.08 and not session.wasPressed then
-            local word=tostring(letter.Text):upper():gsub("%s+","")
-            local letters={
-                A="Left",LEFT="Left",D="Right",RIGHT="Right",
-                F="F",G="G",H="H"
-            }
-            local key=letters[word]
-            if key and os.clock()-V.miniLastPress>.15 and miniInput(key,mode) then
-                session.wasPressed=true
-                V.miniLastPress=os.clock()
-                V.miniStatus="Auto Dodge: "..word
-            end
+        if progress>=threshold and progress<=1.08 and not session.wasPressed
+            and os.clock()-V.miniLastPress>.15 and miniInput(key,mode) then
+            session.wasPressed=true
+            V.miniLastPress=os.clock()
+            V.miniStatus="Auto Dodge: "..word
         end
     end
     local function destroyHakiFishingHover()
@@ -5323,6 +5380,11 @@ local function copiarDebug()
         "Vox MiniGames pesca: "..tostring(VoxHaki.fullAuto or VoxHaki.autoMiniFishing),
         "Vox MiniGames pesca status: "..tostring(VoxHaki.fishStatus),
         "Vox MiniGames entradas: "..tostring(VoxHaki.miniInputs),
+        "Vox MiniGames modo: "..tostring(VoxHaki.miniMode),
+        "Vox MiniGames teclas tentadas: "..tostring(VoxHaki.miniKeyAttempts),
+        "Vox MiniGames falhas: "..tostring(VoxHaki.miniKeyFailures),
+        "Vox MiniGames ultima tecla: "..tostring(VoxHaki.miniLastKey),
+        "Vox MiniGames metodo: "..tostring(VoxHaki.miniInputMethod),
         "Vox MiniGames status: "..tostring(VoxHaki.miniStatus),
         "Boss risco atual: "..tostring(BossFarm.riskScore),
         "Boss destino seguro: "..tostring(BossFarm.safePoint),
