@@ -864,6 +864,18 @@ return function(C)
         end)
     end
     local passiveZone={Return_MerchantCamp_SQ=true}
+    local zoneUseOnly={
+        Enter_KeeperHouse_FS=true,Enter_TrainerRoom_FS=true,
+        Leave_TrainerRoom_FS=true,Climb_BastilleLadder_FS=true
+    }
+    local zoneCustom={
+        Take_SeaMailLetters_SQ=true,
+        Break_TrainingStone_FS_1=true,Break_TrainingStone_FS_2=true,
+        Break_TrainingStone_FS_3=true,Meditate_Waterfall_FS=true,
+        Strike_WaterfallCurrent_FS=true,
+        Train_Squats_FS=true,Train_JumpRope_FS=true,Train_Kicks_FS=true,
+        Meditate_Bastille_FS=true,Race_BastilleRings_FS=true
+    }
     local function interactMarker(pos,objId,marker)
         local _,root,hum,ok=alive()
         if not ok then return false end
@@ -919,7 +931,26 @@ return function(C)
         if not moveTo(pos,3.3,"Interagindo com "..id) then return end
         R.desertStatus=(quest.island=="Golden Dunes" and id or "-")
         if passiveZone[id] then
+            R.zoneStatus="Zona passiva "..id
             R.status="Zona alcançada; aguardando atualização: "..id
+            return
+        end
+        if zoneCustom[id] then
+            once("SQZoneCustom:"..id,1.25,function()
+                R.interactionAttempts+=1
+                local ok=interactMarker(pos,id)
+                R.zoneStatus=(ok and "Interação local" or "Minigame próprio").." "..id
+                R.status=(ok and "Interagindo em " or "Aguardando ação especial em ")..id
+            end)
+            return
+        end
+        if zoneUseOnly[id] then
+            once("SQZoneOnlyUse:"..id,2.6,function()
+                R.zoneAttempts+=1
+                R.zoneStatus="Use "..id
+                server("QuestZones",id,"Use")
+                R.status="Acionando passagem "..id
+            end)
             return
         end
         once("SQZone:"..id,id=="Build_Snowman_SQ" and 3.8 or 3.15,function()
