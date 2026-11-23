@@ -5432,7 +5432,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V11.3 - VOX ARMOR STONEBREAK",
+        "GR HUB V11.4 - QUESTS SECUNDARIAS",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5499,6 +5499,12 @@ local function copiarDebug()
         "Secondary Quest ativa: "..tostring(SecondaryQuestAuto.name),
         "Secondary Quest objetivo: "..tostring(SecondaryQuestAuto.objective),
         "Secondary Quest progresso: "..tostring(SecondaryQuestAuto.progress),
+        "Secondary Quest etapa: "..tostring(SecondaryQuestAuto.objectiveStage),
+        "Secondary Quest objetivo indice: "..tostring(SecondaryQuestAuto.objectiveIndex),
+        "Secondary Quest NPC: "..tostring(SecondaryQuestAuto.lastNPC),
+        "Secondary Quest ilha: "..tostring(SecondaryQuestAuto.currentIsland),
+        "Secondary Quest disponiveis: "..tostring(SecondaryQuestAuto.actionable),
+        "Secondary Quest sem progresso (s): "..tostring(math.floor(math.max(0,os.clock()-(SecondaryQuestAuto.lastProgressTime or os.clock())))),
         "Secondary Quest status: "..tostring(SecondaryQuestAuto.status),
         "Secondary Quest finalizadas: "..tostring(SecondaryQuestAuto.completed),
         "Secondary Quest pedidos: "..tostring(SecondaryQuestAuto.requests),
