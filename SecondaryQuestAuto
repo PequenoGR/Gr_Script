@@ -8,10 +8,14 @@ return function(C)
         lastAction={},skipped={},lastTravel=-100,
         lastScan=0,lastEnemy=nil,lastEnemyScan=0,
         sessionDone={},busyFishing=false,
-        currentIsland=nil,progress="-"
+        currentIsland=nil,progress="-",lastEnemyName=nil,
+        lastProgressKey=nil,lastProgressTime=0,lastNPC=nil,
+        objectiveStage=0,objectiveIndex=0,
+        actionable=0,unsupported=0,selectedReason="-"
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
+        ["The Runaway Cat"]={"","",""},
         ["Flowers for the Dead"]={"MourningWoman","Woman in Mourning","Accept"},
         ["The Witch's Potion"]={"Witch","Witch","AcceptPotion"},
         ["The Lost Inscriptions"]={"CuriousMan","Curious Man","Accept"},
@@ -132,7 +136,7 @@ return function(C)
             if obj:IsA("ModuleScript") and obj.Parent and obj.Parent~=secondaryFolder then
                 local info=C.mainModulo and C.mainModulo.QuestsInfo[obj.Name]
                 if type(info)=="table" and type(info.SubQuests)=="table" then
-                    local value={name=obj.Name,island=obj.Parent.Name,category=obj.Parent.Parent and obj.Parent.Parent.Name or "",info=info}
+                    local value={name=obj.Name,island=obj.Parent.Name,category=obj.Parent.Name,info=info}
                     secondary[#secondary+1]=value
                     secondaryByName[obj.Name]=value
                 end
@@ -146,6 +150,31 @@ return function(C)
         return l1==l2 and a.name<b.name or l1<l2
     end)
     R.total=#secondary
+    local questSystem
+    pcall(function()
+        local essentials=RS:FindFirstChild("Modules") and RS.Modules:FindFirstChild("Essentials")
+        local root=essentials and essentials:FindFirstChild("QuestSystem")
+        if root then questSystem=require(root).IsClient end
+    end)
+    local function liveObjectives()
+        if questSystem and type(questSystem.GetProgress)=="function" then
+            local ok,p=pcall(function() return questSystem:GetProgress() end)
+            if ok and type(p)=="table" and type(p.ObjectiveIds)=="table" then
+                return p.ObjectiveIds
+            end
+        end
+        return nil
+    end
+    local function canStartQuest(quest,d)
+        local info=quest.info
+        if (tonumber(info.MinLevel) or 0)>C.lerNivel(d) then return false end
+        if completed(quest.name) or R.sessionDone[quest.name] then return false end
+        if type(info.CanTake)=="function" then
+            local ok,result=pcall(info.CanTake,player)
+            if ok and result==false then return false end
+        end
+        return true
+    end
     local function completed(name)
         if R.sessionDone[name] then return true end
         local fn=C.mainModulo and C.mainModulo.QuestsUtils
@@ -173,6 +202,7 @@ return function(C)
         return C.posicaoDe(v)
     end
     local function npcPosition(actor,root)
+        if type(actor)~="string" or actor=="" then return nil end
         local points=C.mainModulo and C.mainModulo.InterestPoints
         if points and type(points.Get)=="function" then
             local ok,value=pcall(function() return points:Get("Character_"..actor) end)
@@ -208,7 +238,8 @@ return function(C)
         local ok,info=pcall(require,module)
         if not ok or type(info)~="table" then return nil end
         local actor=info.Actors and info.Actors[1]
-        local pos,model=actor and npcPosition(actor,root) or nil,nil
+        local pos,model
+        if actor then pos,model=npcPosition(actor,root) end
         return pos,model,actor
     end
     local function stopRoute()
@@ -235,7 +266,8 @@ return function(C)
     local function travelTo(quest)
         local island=quest.island
         R.currentIsland=tostring(C.localAtual() or "")
-        if island=="Treasure Hunt" or island=="Wanted Posters" or island=="Beggar Rescue" or island=="Sky Hermit" then return false end
+        if island=="Treasure Hunt" or island=="Wanted Posters" or island=="Beggar Rescue" then return false end
+        if island=="Sky Hermit" then island="Solmar Island" end
         if norm(R.currentIsland)==norm(island) then return false end
         if C.IslandTeleport.traveling then
             R.status="Viajando para "..island
@@ -265,14 +297,32 @@ return function(C)
         local qs=d and d.Quests and d.Quests.Actives
         local rows=qs and qs[quest.name]
         if type(rows)~="table" then return nil end
-        for stage,step in ipairs(quest.info.SubQuests) do
+        local activeIds=liveObjectives()
+        local fallback
+        for stage,step in ipairs(quest.info.SubQuests or {}) do
             local values=rows[stage] or {}
+            local pending=false
             for i,objective in ipairs(step.Objectives or {}) do
-                if (tonumber(values[i]) or 0)<(tonumber(objective.Goal) or 1) then
-                    return objective,stage,i,tonumber(values[i]) or 0
+                local current=tonumber(values[i]) or 0
+                if current<(tonumber(objective.Goal) or 1) then
+                    pending=true
+                    local valid=true
+                    if type(objective.Validate)=="function" then
+                        local ok,res=pcall(objective.Validate,player)
+                        valid=ok and res~=false
+                    end
+                    if valid then
+                        local candidate={objective,stage,i,current}
+                        if activeIds and activeIds[objective.ObjectiveID]~=nil then
+                            return table.unpack(candidate)
+                        end
+                        if not fallback then fallback=candidate end
+                    end
                 end
             end
+            if pending then break end
         end
+        if fallback and not activeIds then return table.unpack(fallback) end
         return nil
     end
     local function objectivePoint(quest,obj)
@@ -309,10 +359,10 @@ return function(C)
     end
     local function findTarget(name,root)
         if os.clock()-R.lastEnemyScan<.55 and R.lastEnemy
-            and C.valido(R.lastEnemy) then return R.lastEnemy end
+            and R.lastEnemyName==name and C.valido(R.lastEnemy) then return R.lastEnemy end
         R.lastEnemyScan=os.clock()
         local item=C.encontrarInimigo(name,root)
-        if item and C.valido(item) then R.lastEnemy=item;return item end
+        if item and C.valido(item) then R.lastEnemy=item;R.lastEnemyName=name;return item end
         local ignore=workspace:FindFirstChild("IgnoreList")
         local int=ignore and ignore:FindFirstChild("Int")
         local play=workspace:FindFirstChild("Playability")
@@ -337,6 +387,7 @@ return function(C)
             end
         end
         R.lastEnemy=item
+        R.lastEnemyName=name
         return item
     end
     local function attack(quest,obj,pos)
@@ -374,12 +425,13 @@ return function(C)
         if not key then R.status="Conversa sem NPC: "..id;return end
         local _,root,hum,ok=alive()
         if not ok then return end
-        local npcPos=converseInfo(key,root)
-        local target=npcPos or pos
+        local npcPos,npcModel=converseInfo(key,root)
+        local target=pos or npcPos
+        R.lastNPC=key
         if not moveTo(target,7,"Indo conversar: "..key) then return end
         local action=spec and spec[2] or "Talk"
         once("SQTalk:"..id,5,function()
-            if C.interagirNPC then pcall(C.interagirNPC,CFrame.new(target)) end
+            if C.interagirNPC and target then pcall(C.interagirNPC,CFrame.new(target),npcModel) end
             server("Elysium_Converse",key,action)
             R.status="Conversando com "..key.." ("..action..")"
         end)
@@ -432,15 +484,21 @@ return function(C)
         local _,root,hum,ok=alive()
         if not ok then return end
         local converse,actor,action=table.unpack(npc)
-        local pos=npcPosition(actor,root)
-        if not pos then pos=converseInfo(converse,root) end
+        if converse=="" then
+            R.status="Missão sem diálogo: "..quest.name
+            R.skipped[quest.name]=os.clock()+30
+            return
+        end
+        local pos,model=converseInfo(converse,root)
+        if not pos then pos,model=npcPosition(actor,root) end
+        R.lastNPC=actor
         if not moveTo(pos,7,"Indo ao NPC "..actor) then
             if not pos then R.skipped[quest.name]=os.clock()+25 end
             return
         end
         once("SQStart:"..quest.name,8,function()
-            if C.interagirNPC then
-                pcall(C.interagirNPC,CFrame.new(pos))
+            if C.interagirNPC and pos then
+                pcall(C.interagirNPC,CFrame.new(pos),model)
             end
             server("Elysium_Converse",converse,action)
             R.status="Aceitando "..quest.name.." com "..actor
@@ -477,17 +535,18 @@ return function(C)
             end
             local sameLocation=tostring(C.localAtual() or "")
             local best,score=nil,math.huge
+            R.actionable=0
             for _,entry in ipairs(secondary) do
                 if entry.name~="Vox Sense Training" and entry.name~="Vox Armor Training"
                     and entry.name~="Vox Sense Mastery" and entry.name~="Vox Armor Mastery"
                     and entry.category~="Treasure Hunt" and entry.category~="Beggar Rescue"
-                    and (NPC[entry.name] or entry.category=="Wanted Posters")
-                    and (tonumber(entry.info.MinLevel) or 0)<=C.lerNivel(d)
-                    and not R.sessionDone[entry.name]
-                    and (entry.info.IsRepeatable or not completed(entry.name))
+                    and entry.category~="Wanted Posters"
+                    and NPC[entry.name]
+                    and canStartQuest(entry,d)
                     and os.clock()>=(R.skipped[entry.name] or 0) then
-                    local extra=norm(entry.island)==norm(sameLocation) and 0 or 500
-                    if entry.category=="Wanted Posters" then extra+=800 end
+                    R.actionable+=1
+                    local home=entry.island=="Sky Hermit" and "Solmar Island" or entry.island
+                    local extra=norm(home)==norm(sameLocation) and 0 or 500
                     local value=extra+(tonumber(entry.info.MinLevel) or 0)*.15
                     if value<score then best,score=entry,value end
                 end
@@ -508,19 +567,28 @@ return function(C)
         if R.name~=quest.name then
             R.name=quest.name
             R.lastEnemy=nil
+            R.lastEnemyName=nil
             R.objective=nil
+            R.lastProgressKey=nil
         end
         R.currentIsland=tostring(C.localAtual() or "")
         local obj,stage,index,count=nextObjective(quest,d)
         if not obj then
             restoreFishing()
-            R.status="Aguardando conclusão/recompensa: "..quest.name
+            R.status="Aguardando progresso válido ou conclusão: "..quest.name
             stopRoute()
             return
         end
         local id=tostring(obj.ObjectiveID or "")
         R.objective=id
+        R.objectiveStage=stage
+        R.objectiveIndex=index
         R.progress=tostring(count).."/"..tostring(obj.Goal or "?")
+        local key=quest.name..":"..stage..":"..index..":"..tostring(count)
+        if key~=R.lastProgressKey then
+            R.lastProgressKey=key
+            R.lastProgressTime=os.clock()
+        end
         local targetIsland=TALK_ISLAND[id] or quest.island
         if targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
@@ -563,6 +631,9 @@ return function(C)
         R.enabled=v==true
         C.State.AutoSecondary=R.enabled
         if R.enabled then
+            R.sessionDone={}
+            R.lastProgressKey=nil
+            R.lastProgressTime=os.clock()
             if C.State.AutoFarmQuest then C.definirFarm(false) end
             if C.State.AutoFarmFruit then C.definirFarmFruta(false) end
             if C.State.AutoHaki then C.VoxHaki.setFullAuto(false) end
