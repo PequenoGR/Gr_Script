@@ -1300,7 +1300,7 @@ local function adicionarESP(item)
     bb.Adornee=h
     bb.Size=UDim2.fromOffset(185,42)
     bb.StudsOffsetWorldSpace=Vector3.new(0,3.5,0)
-    bb.MaxDistance=4000
+    bb.MaxDistance=100000
     bb.Parent=h
     local text=Instance.new("TextLabel")
     text.BackgroundTransparency=1
@@ -2130,39 +2130,6 @@ local Sea = (function()
             end
         end
         for m in pairs(S.marks) do if not seen[m] then clearMark(m) end end
-        local pos=eventPosition()
-        if pos then
-            if not S.eventPart then
-                local anchor=Instance.new("Part")
-                anchor.Name="GR_SeaEventMarker"
-                anchor.Anchored=true
-                anchor.CanCollide=false
-                anchor.CanTouch=false
-                anchor.CanQuery=false
-                anchor.Transparency=1
-                anchor.Size=Vector3.one
-                anchor.Parent=workspace
-                local gui=Instance.new("BillboardGui")
-                gui.Size=UDim2.fromOffset(210,35)
-                gui.AlwaysOnTop=true
-                gui.StudsOffsetWorldSpace=Vector3.new(0,12,0)
-                gui.Parent=anchor
-                local t=Instance.new("TextLabel")
-                t.Size=UDim2.fromScale(1,1)
-                t.BackgroundColor3=Color3.fromRGB(25,25,25)
-                t.BackgroundTransparency=.25
-                t.TextColor3=Color3.fromRGB(255,225,100)
-                t.Font=Enum.Font.GothamBold
-                t.TextScaled=true
-                t.Text="SEA BEAST EVENT"
-                t.Parent=gui
-                S.eventPart=anchor
-            end
-            S.eventPart.Position=pos
-        elseif S.eventPart then
-            S.eventPart:Destroy()
-            S.eventPart=nil
-        end
     end
     local function choose(root)
         local closest,dist
