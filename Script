@@ -5381,7 +5381,7 @@ local SecondaryQuestAuto={enabled=false,status="Inicializando",name=nil,objectiv
 function SecondaryQuestAuto.setAuto(_) warn("[GR Secondary Quest] Módulo indisponível") end
 local okSecondary,errSecondary=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SecondaryQuestAuto"
-    local fresh=url.."?v=12.1&t="..tostring(os.time())
+    local fresh=url.."?v=12.2&t="..tostring(os.time())
     local okGet,code=pcall(function() return game:HttpGet(fresh,true) end)
     if not okGet or type(code)~="string" or code=="" then
         code=game:HttpGet(url,true)
@@ -5483,7 +5483,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.1 - PHANTOM LEVER CACHE FIX",
+        "GR HUB V12.2 - FIX NPC MYSTERIOUS MONK",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5565,6 +5565,11 @@ local function copiarDebug()
         "Secondary Quest tipo de interacao: "..tostring(SecondaryQuestAuto.interactionMode),
         "Secondary Quest interacoes tentadas: "..tostring(SecondaryQuestAuto.interactionAttempts),
         "Secondary Quest NPC encontrado: "..tostring(SecondaryQuestAuto.npcAlias),
+        "Secondary Quest NPC pronto: "..tostring(SecondaryQuestAuto.npcReady),
+        "Secondary Quest NPC chegada: "..tostring(SecondaryQuestAuto.npcArrival),
+        "Secondary Quest NPC distancia 3D: "..tostring(SecondaryQuestAuto.npcDistance3D),
+        "Secondary Quest NPC distancia horizontal: "..tostring(SecondaryQuestAuto.npcDistanceXZ),
+        "Secondary Quest NPC diferenca de altura: "..tostring(SecondaryQuestAuto.npcHeightDifference),
         "Secondary Quest objetivo Desert: "..tostring(SecondaryQuestAuto.desertStatus),
         "Secondary Quest zonas tentadas: "..tostring(SecondaryQuestAuto.zoneAttempts),
         "Secondary Quest zona status: "..tostring(SecondaryQuestAuto.zoneStatus),
