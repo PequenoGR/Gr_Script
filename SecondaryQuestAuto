@@ -15,7 +15,6 @@ return function(C)
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
-        ["The Runaway Cat"]={"","",""},
         ["Flowers for the Dead"]={"MourningWoman","Woman in Mourning","Accept"},
         ["The Witch's Potion"]={"Witch","Witch","AcceptPotion"},
         ["The Lost Inscriptions"]={"CuriousMan","Curious Man","Accept"},
@@ -165,6 +164,7 @@ return function(C)
         end
         return nil
     end
+    local completed
     local function canStartQuest(quest,d)
         local info=quest.info
         if (tonumber(info.MinLevel) or 0)>C.lerNivel(d) then return false end
@@ -175,7 +175,7 @@ return function(C)
         end
         return true
     end
-    local function completed(name)
+    completed=function(name)
         if R.sessionDone[name] then return true end
         local fn=C.mainModulo and C.mainModulo.QuestsUtils
         if not fn or type(fn.QuestIsCompleted)~="function" then return false end
@@ -436,6 +436,7 @@ return function(C)
             R.status="Conversando com "..key.." ("..action..")"
         end)
     end
+    local passiveZone={Return_MerchantCamp_SQ=true}
     local function doZone(quest,obj,pos)
         local id=tostring(obj.ObjectiveID or "")
         if not zoneModules[id] then
@@ -444,6 +445,10 @@ return function(C)
             return
         end
         if not moveTo(pos,5,"Interagindo com "..id) then return end
+        if passiveZone[id] then
+            R.status="Zona alcançada; aguardando atualização: "..id
+            return
+        end
         once("SQZone:"..id,4.5,function()
             if server("QuestZones",id,"Start") then
                 task.delay(1.65,function()
@@ -589,7 +594,10 @@ return function(C)
             R.lastProgressKey=key
             R.lastProgressTime=os.clock()
         end
-        local targetIsland=TALK_ISLAND[id] or quest.island
+        local zone=zoneModules[id]
+        local zoneIsland=zone and zone.Parent and zone.Parent.Parent
+            and zone.Parent.Parent.Name or nil
+        local targetIsland=TALK_ISLAND[id] or zoneIsland or quest.island
         if targetIsland~=quest.island then
             if travelTo({island=targetIsland}) then return end
         elseif travelTo(quest) then return end
