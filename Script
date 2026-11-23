@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -790,7 +790,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1833,6 +1833,8 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubRushStop)=="function" then pcall(env.GRHubRushStop) end
+    env.GRHubRushStop=nil
     if type(env.GRHubSkyHermitStop)=="function" then pcall(env.GRHubSkyHermitStop) end
     env.GRHubSkyHermitStop=nil
     if type(env.GRHubSecondaryStop)=="function" then pcall(env.GRHubSecondaryStop) end
@@ -1893,7 +1895,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -5477,13 +5479,53 @@ env.GRHubSkyHermitStop=function()
     end
 end
 
+local AutoRush={enabled=false,status="Inicializando",stage="-",requests=0,failures=0,steps=0}
+function AutoRush.setAuto(_) warn("[GR Auto Rush] Módulo indisponível") end
+local okRush,errRush=pcall(function()
+    local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/AutoRush"
+    local code=game:HttpGet(url.."?v=12.4&t="..tostring(os.time()),true)
+    if type(code)~="string" or code=="" then code=game:HttpGet(url,true) end
+    local factory=assert(loadstring(code))
+    AutoRush=factory()({
+        player=player,
+        State=State,
+        dadosModulo=dadosModulo,
+        mainModulo=mainModulo,
+        IslandTeleport=IslandTeleport,
+        SecondaryQuestAuto=SecondaryQuestAuto,
+        SkyHermitAuto=SkyHermitAuto,
+        VoxHaki=VoxHaki,
+        BossFarm=BossFarm,
+        Raid=Raid,
+        Sea=Sea,
+        running=running,
+        character=character,
+        lerDados=lerDados,
+        lerNivel=lerNivel,
+        localAtual=localAtual,
+        posicaoDe=posicaoDe,
+        getRoute=function() return rota end,
+        definirDestino=definirDestino,
+        liberarVoo=liberarVoo,
+        definirFarm=definirFarm,
+        definirFarmFruta=definirFarmFruta
+    })
+end)
+if not okRush then
+    AutoRush.status="Falha ao carregar: "..tostring(errRush)
+    warn("[GR Auto Rush]",errRush)
+end
+env.GRHubRushStop=function()
+    if AutoRush and type(AutoRush.stop)=="function" then AutoRush.stop() end
+end
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.3 - SECONDARY QUEST MINIGAMES ENGINE",
+        "GR HUB V12.4 - AUTO RUSH PLAYER",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5545,6 +5587,21 @@ local function copiarDebug()
         "Tentativas compra frutas: "..tostring(FruitShopAuto.attempts),
         "Compras confirmadas pelo saldo: "..tostring(FruitShopAuto.purchases),
         "Última fruta da loja: "..tostring(FruitShopAuto.lastFruit),
+        "Auto Rush: "..tostring(AutoRush.enabled),
+        "Auto Rush status: "..tostring(AutoRush.status),
+        "Auto Rush etapa: "..tostring(AutoRush.stage),
+        "Auto Rush objetivo: "..tostring(AutoRush.objective),
+        "Auto Rush quest ativa: "..tostring(AutoRush.questActive),
+        "Auto Rush Soru: "..tostring(AutoRush.ability),
+        "Auto Rush alavanca: "..tostring(AutoRush.lever),
+        "Auto Rush distancia: "..tostring(AutoRush.distance),
+        "Auto Rush passos: "..tostring(AutoRush.steps),
+        "Auto Rush corrida ativa: "..tostring(AutoRush.runActive),
+        "Auto Rush id minigame: "..tostring(AutoRush.gameId),
+        "Auto Rush ultimo comando: "..tostring(AutoRush.lastRemote),
+        "Auto Rush pedidos: "..tostring(AutoRush.requests),
+        "Auto Rush erros: "..tostring(AutoRush.failures),
+        "Auto Rush bloqueio: "..tostring(AutoRush.blocked),
         "Auto Secondary Quest: "..tostring(SecondaryQuestAuto.enabled),
         "Secondary Quest catalogo: "..tostring(SecondaryQuestAuto.total),
         "Secondary Quest ativa: "..tostring(SecondaryQuestAuto.name),
@@ -5862,6 +5919,7 @@ Hub.CreateToggle(farm,"Auto Farm Quest",definirFarm)
 local secSecondary=Hub.CreateSection("Main","QUESTS SECUNDÁRIAS")
 Hub.CreateToggle(secSecondary,"Auto Quest Secundária",function(enabled)
     if enabled and SkyHermitAuto.enabled then SkyHermitAuto.setAuto(false) end
+    if enabled and AutoRush.enabled then AutoRush.setAuto(false) end
     SecondaryQuestAuto.setAuto(enabled)
 end,"scroll-text","gr_auto_secondary")
 local secBoss=Hub.CreateSection("Main","AUTO BOSS")
@@ -5930,8 +5988,13 @@ Hub.CreateToggle(hakiPanel,"Auto Haki",function(enabled)
 end,"zap","gr_auto_haki")
 local skyPanel=Hub.CreateSection("Player","SKY HERMIT / HEAVENSTEP")
 Hub.CreateToggle(skyPanel,"Auto Sky Hermit (7 bandeiras)",function(enabled)
+    if enabled and AutoRush.enabled then AutoRush.setAuto(false) end
     SkyHermitAuto.setAuto(enabled==true)
 end,"flag","gr_auto_sky_hermit")
+local rushPanel=Hub.CreateSection("Player","RUSH / SORU")
+Hub.CreateToggle(rushPanel,"Auto Rush",function(enabled)
+    AutoRush.setAuto(enabled==true)
+end,"wind","gr_auto_rush")
 local reset=Hub.CreateSection("Player","PERSONAGEM")
 Hub.CreateButton(reset,"Resetar Personagem",function()
     liberarVoo()
