@@ -5392,6 +5392,7 @@ local okSecondary,errSecondary=pcall(function()
         dadosModulo=dadosModulo,
         CombatEvent=CombatEvent,
         IslandTeleport=IslandTeleport,
+        privateClient=privateClient,
         VoxHaki=VoxHaki,
         Raid=Raid,
         BossFarm=BossFarm,
@@ -5478,7 +5479,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V11.6 - QUEST SECUNDARIA BOBO",
+        "GR HUB V11.7 - BOBO E TOMATES CORRIGIDOS",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5562,6 +5563,11 @@ local function copiarDebug()
         "Secondary Quest Bobo nota: "..tostring(SecondaryQuestAuto.tomatoNote),
         "Secondary Quest Bobo toques: "..tostring(SecondaryQuestAuto.tomatoInputs),
         "Secondary Quest Bobo status: "..tostring(SecondaryQuestAuto.tomatoStatus),
+        "Secondary Quest Bobo direcao: "..tostring(SecondaryQuestAuto.tomatoExpected),
+        "Secondary Quest Bobo barra: "..tostring(SecondaryQuestAuto.tomatoProgress).."%",
+        "Secondary Quest Bobo momento do toque: "..tostring(SecondaryQuestAuto.tomatoPressAt),
+        "Secondary Quest Bobo distancia: "..tostring(SecondaryQuestAuto.clownDistance),
+        "Secondary Quest Bobo saida do circo: "..tostring(SecondaryQuestAuto.clownDoorStatus),
         "Auto Sky Hermit: "..tostring(SkyHermitAuto.enabled),
         "Sky Hermit status: "..tostring(SkyHermitAuto.status),
         "Sky Hermit etapa: "..tostring(SkyHermitAuto.stage),
