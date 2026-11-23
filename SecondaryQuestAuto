@@ -27,7 +27,9 @@ return function(C)
         npcDistance3D=nil,npcDistanceXZ=nil,npcHeightDifference=nil,
         npcReady=false,npcArrival="-",npcLastTarget=nil,
         phantomLever=0,phantomAttempts=0,phantomDistance=nil,
-        phantomAction="-",phantomStatus="-",phantomObjectFound=false
+        phantomAction="-",phantomStatus="-",phantomObjectFound=false,
+        phantomStage="-",phantomInsideEntry=false,phantomRunDistance=nil,
+        phantomRunSteps=0,phantomActiveId=nil,phantomRunBlocked=0
     }
     local NPC={
         ["The Sky Hermit"]={"SkyHermit","Sky Hermit","Accept"},
@@ -959,12 +961,87 @@ return function(C)
         end
         return nil
     end
+    local function phantomOverPart(root,part)
+        if not root or not part or not part:IsA("BasePart") then return false end
+        local relative=part.CFrame:PointToObjectSpace(root.Position)
+        local half=part.Size*.5
+        return math.abs(relative.X)<=half.X+2 and
+            math.abs(relative.Z)<=half.Z+2 and
+            relative.Y>=-half.Y-2 and relative.Y<=half.Y+12
+    end
+    local function phantomInsideTarget(part)
+        return part.Position+Vector3.new(0,part.Size.Y*.5+2.65,0)
+    end
+    local function templeActiveId()
+        local path=modulePath(RS,{"Modules","Addons","MinigamesSystem"})
+        if not path then return nil end
+        local ok,lib=pcall(require,path)
+        if ok and type(lib)=="table" then
+            local client=lib.IsClient
+            local session=client and client.Active
+            if session and session.Name=="TempleRun" then
+                return session.Id
+            end
+        end
+        return nil
+    end
+    local function phantomPassage()
+        local char,root,hum,ok=alive()
+        if not ok then return true end
+        local finish=Vector3.new(-8313.688,-1205.046,14298.82)
+        local start=Vector3.new(-8313.673,-1205.046,12929.421)
+        local remaining=(root.Position-finish).Magnitude
+        R.phantomRunDistance=math.floor(remaining)
+        R.phantomStage="Atravessando as ruínas"
+        R.phantomAction="Run"
+        if math.abs(root.Position.Y-start.Y)>42 then
+            R.phantomStatus="Aguardando entrada nas ruínas (interior ainda não carregado)"
+            R.status=R.phantomStatus
+            return true
+        end
+        if remaining<=18 then
+            R.phantomStatus="Fim do corredor alcançado; aguardando TempleRun End"
+            R.status=R.phantomStatus
+            local id=templeActiveId()
+            R.phantomActiveId=id
+            if id then
+                once("SQTempleRunEnd",2.7,function()
+                    R.phantomAttempts+=1
+                    server("MinigamesService","TempleRun",{GameAction="End",id=id})
+                end)
+            end
+            return true
+        end
+        local direction=Vector3.new(finish.X-root.Position.X,
+            0,finish.Z-root.Position.Z)
+        if direction.Magnitude<.01 then return true end
+        local maxStep=math.min(direction.Magnitude,16)
+        local desired=root.Position+direction.Unit*maxStep
+        desired=Vector3.new(desired.X,start.Y+3.2,desired.Z)
+        C.liberarVoo()
+        local okMove=pcall(function()
+            char:PivotTo(CFrame.new(desired)*root.CFrame.Rotation)
+            root.AssemblyLinearVelocity=Vector3.zero
+        end)
+        if okMove then
+            R.phantomRunSteps+=1
+            R.phantomStatus="Percorrendo corredor: "..R.phantomRunDistance.." studs restantes"
+        else
+            R.phantomRunBlocked+=1
+            R.phantomStatus="Falha ao atravessar corredor"
+        end
+        R.status=R.phantomStatus
+        return true
+    end
     local function phantomObjective(quest,obj)
         if quest.name~="The Phantom Tablet" then return false end
         local id=tostring(obj.ObjectiveID or "")
         local index=tonumber(id:match("^Pull_PhantomLever_SQ_(%d+)$"))
-        local action
-        local point
+        if id=="Investigate_PhantomRuins_SQ" then
+            R.desertStatus=id
+            return phantomPassage()
+        end
+        local action,point,part
         if index then
             local model
             model,point=phantomLever(index)
@@ -972,7 +1049,7 @@ return function(C)
             R.phantomLever=index
             action="Pull"
             if not model then
-                R.phantomStatus="Alavanca "..index.." indisponível em SoruMiniGame.Quest.Levers"
+                R.phantomStatus="Alavanca "..index.." não carregada"
                 R.status=R.phantomStatus
                 return true
             end
@@ -980,21 +1057,19 @@ return function(C)
             local name=({
                 Enter_PhantomRuins_SQ="TeleportEntryPart",
                 Take_PhantomTablet_SQ="SoruTabulet",
-                Investigate_PhantomRuins_SQ="TeleportBackPart",
                 Escape_PhantomRuins_SQ="TeleportBackPart"
             })[id]
             action=({
                 Enter_PhantomRuins_SQ="Enter",
                 Take_PhantomTablet_SQ="Take",
-                Investigate_PhantomRuins_SQ="Leave",
                 Escape_PhantomRuins_SQ="Leave"
             })[id]
             if not name then return false end
-            local model=phantomQuestParts()
-            local part=model and model:FindFirstChild(name)
+            local folder=phantomQuestParts()
+            part=folder and folder:FindFirstChild(name)
             R.phantomObjectFound=part~=nil
             if not part then
-                R.phantomStatus="Objeto "..name.." não carregado"
+                R.phantomStatus="Peça "..name.." não carregada"
                 R.status=R.phantomStatus
                 return true
             end
@@ -1005,23 +1080,56 @@ return function(C)
                 return true
             end
         end
+        R.phantomStage=id
         R.desertStatus=id
         R.phantomAction=action
         local _,root,hum,ok=alive()
         if not ok then return true end
-        R.phantomDistance=math.floor((root.Position-point).Magnitude*10)/10
-        local reach=index and 5.2 or (action=="Take" and 4.5 or 3.8)
-        if not moveTo(point,reach,"Phantom Tablet: "..(index and ("alavanca "..index.."/3") or action)) then
-            R.phantomStatus="Aproximando de "..tostring(action).." ("..R.phantomDistance.." studs)"
+        local target=point
+        if (action=="Enter" or action=="Leave") and
+            part and part:IsA("BasePart") then
+            target=phantomInsideTarget(part)
+            R.phantomInsideEntry=phantomOverPart(root,part)
+        else
+            R.phantomInsideEntry=false
+        end
+        local dist=(root.Position-target).Magnitude
+        R.phantomDistance=math.floor(dist*10)/10
+        local ready=R.phantomInsideEntry or
+            (action=="Pull" and dist<=6.5) or
+            (action=="Take" and dist<=5.9) or
+            ((action=="Enter" or action=="Leave") and dist<=3.5)
+        if not ready then
+            if not moveTo(target,3.2,"Phantom Tablet: "..(index and
+                ("alavanca "..index.."/3") or action)) then
+                R.phantomStatus="Aproximando de "..tostring(action)..
+                    " ("..R.phantomDistance.." studs)"
+                return true
+            end
+            local _,freshRoot=alive()
+            local checkRoot=freshRoot or root
+            local recalc=(checkRoot.Position-target).Magnitude
+            if action=="Enter" or action=="Leave" then
+                ready=part and phantomOverPart(checkRoot,part) or recalc<=3.5
+            else
+                ready=recalc<=6.5
+            end
+        end
+        if not ready then
+            R.phantomStatus="Ajustando posição do "..tostring(action)
+            R.status=R.phantomStatus
             return true
         end
-        local key="SQPhantom:"..id
-        once(key,index and 2.5 or 2.25,function()
-            R.phantomAttempts+=1
+        once("SQPhantom:"..id,action=="Pull" and 2.5 or 2.0,function()
+            local currentData=data()
+            local currentQuest=active(currentData)
+            local currentObj=currentQuest and nextObjective(currentQuest,currentData)
+            if not currentObj or currentObj.ObjectiveID~=id then return end
             local payload={GameAction=action}
             if index then payload.Index=index end
+            R.phantomAttempts+=1
             if server("MinigamesService","TempleRun",payload) then
-                R.phantomStatus=action.." enviado para TempleRun; índice "..tostring(index or "-")..
+                R.phantomStatus=action.." enviado: "..tostring(index or "-")..
                     " | tentativa "..R.phantomAttempts
                 R.status=R.phantomStatus
             end
