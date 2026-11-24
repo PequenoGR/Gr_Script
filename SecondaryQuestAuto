@@ -6,6 +6,9 @@ return function(C)
         enabled=false,status="Desligado",name=nil,objective=nil,
         total=0,completed=0,requests=0,failures=0,
         lastAction={},skipped={},lastTravel=-100,
+        startTracking={},startRejected="-",startRetryCount=0,
+        prerequisiteBlocked={},prerequisiteInfo="-",
+        startConfirmed=0,startAttemptsCurrent=0,
         lastScan=0,lastEnemy=nil,lastEnemyScan=0,
         sessionDone={},busyFishing=false,
         previousFishing=false,previousCast=false,fishHover=nil,fishHoverPoint=nil,
@@ -192,11 +195,44 @@ return function(C)
         end
         return nil
     end
+    local prerequisiteQuests={
+        ["The Witch's Potion"]={name="Forbidden Island 3",kind="exists"},
+        ["The Contraband"]={name="Prison Island 3",kind="exists"},
+        ["The Path of Flames"]={name="Wandering Bastille 1",kind="positive"}
+    }
     local completed
+    local function checkPrerequisite(name)
+        local gate=prerequisiteQuests[name]
+        if not gate then return true end
+        local utils=C.mainModulo and C.mainModulo.QuestsUtils
+        if not utils or type(utils.QuestIsCompleted)~="function" then
+            R.prerequisiteBlocked[name]=gate.name.." (dados indisponíveis)"
+            return false
+        end
+        local ok,value=pcall(utils.QuestIsCompleted,player,gate.name)
+        local allowed=ok and (
+            (gate.kind=="positive" and
+                (type(value)=="number" and value>0 or value==true)) or
+            (gate.kind=="exists" and value~=nil and value~=false)
+        )
+        if not allowed then
+            R.prerequisiteBlocked[name]=gate.name
+            return false
+        end
+        R.prerequisiteBlocked[name]=nil
+        return true
+    end
     local function canStartQuest(quest,d)
         local info=quest.info
         if (tonumber(info.MinLevel) or 0)>C.lerNivel(d) then return false end
         if completed(quest.name) or R.sessionDone[quest.name] then return false end
+        if not checkPrerequisite(quest.name) then
+            if R.prerequisiteInfo=="-" then
+                R.prerequisiteInfo=quest.name.." precisa de "..
+                    tostring(R.prerequisiteBlocked[quest.name])
+            end
+            return false
+        end
         if type(info.CanTake)=="function" then
             local ok,result=pcall(info.CanTake,player)
             if ok and result==false then return false end
@@ -1342,12 +1378,30 @@ return function(C)
             if not pos then R.skipped[quest.name]=os.clock()+25 end
             return
         end
-        once("SQStart:"..quest.name,1.1,function()
+        local tracker=R.startTracking[quest.name]
+        if not tracker then
+            tracker={count=0,since=os.clock()}
+            R.startTracking[quest.name]=tracker
+        end
+        if tracker.count>=7 and os.clock()-tracker.since>=6 then
+            R.skipped[quest.name]=os.clock()+120
+            R.startRejected=quest.name.." | sem confirmação após "..tracker.count.." pedidos"
+            R.startRetryCount+=1
+            R.status="Pulando temporariamente "..quest.name..
+                ": o servidor não confirmou a aceitação"
+            stopRoute()
+            R.startTracking[quest.name]=nil
+            return
+        end
+        once("SQStart:"..quest.name,1.25,function()
             R.interactionAttempts+=1
+            tracker.count+=1
+            R.startAttemptsCurrent=tracker.count
             if server("Elysium_Converse",converse,action) then
                 R.npcRequests+=1
                 R.npcStatus=converse.." / "..action
-                R.status="Aceitando "..quest.name.." com "..actor
+                R.status="Solicitado "..quest.name.." com "..actor..
+                    " ("..tracker.count.."/7); aguardando aceitação"
             end
         end)
     end
@@ -1522,6 +1576,7 @@ return function(C)
             local sameLocation=tostring(C.localAtual() or "")
             local best,score=nil,math.huge
             R.actionable=0
+            R.prerequisiteInfo="-"
             for _,entry in ipairs(secondary) do
                 if entry.name~="The Sky Hermit" and entry.name~="Vox Sense Training" and entry.name~="Vox Armor Training"
                     and entry.name~="Vox Sense Mastery" and entry.name~="Vox Armor Mastery"
@@ -1538,7 +1593,9 @@ return function(C)
                 end
             end
             if not best then
-                R.status="Sem quests secundárias iniciáveis disponíveis (nível / NPC / mapa)"
+                R.status=R.prerequisiteInfo~="-" and
+                    ("Quests bloqueadas por requisito: "..R.prerequisiteInfo) or
+                    "Sem quests secundárias iniciáveis disponíveis (nível / NPC / mapa)"
                 R.name=nil
                 stopRoute()
                 return
@@ -1549,6 +1606,12 @@ return function(C)
             if travelTo(best) then return end
             startQuest(best)
             return
+        end
+        if R.startTracking[quest.name] then
+            R.startTracking[quest.name]=nil
+            R.startConfirmed+=1
+            R.startAttemptsCurrent=0
+            R.startRejected="-"
         end
         if R.name~=quest.name then
             R.name=quest.name
@@ -1596,6 +1659,9 @@ return function(C)
         C.State.AutoSecondary=R.enabled
         if R.enabled then
             R.sessionDone={}
+            R.startTracking={}
+            R.startAttemptsCurrent=0
+            R.prerequisiteInfo="-"
             R.lastProgressKey=nil
             R.lastProgressTime=os.clock()
             R.clownStartUntil=0
