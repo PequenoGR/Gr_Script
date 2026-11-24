@@ -3093,8 +3093,7 @@ local IslandESP=(function()
         local label=Instance.new("TextLabel")
         label.Name="NameAndDistance"
         label.Size=UDim2.fromScale(1,1)
-        label.BackgroundColor3=Color3.fromRGB(15,22,31)
-        label.BackgroundTransparency=.16
+        label.BackgroundTransparency=1
         label.TextColor3=Color3.fromRGB(127,236,255)
         label.TextStrokeColor3=Color3.fromRGB(0,0,0)
         label.TextStrokeTransparency=.3
@@ -3103,16 +3102,8 @@ local IslandESP=(function()
         label.TextSize=13
         label.Text=area.Name
         label.Parent=gui
-        local corner=Instance.new("UICorner")
-        corner.CornerRadius=UDim.new(0,8)
-        corner.Parent=label
-        local stroke=Instance.new("UIStroke")
-        stroke.Thickness=1.5
-        stroke.Color=Color3.fromRGB(43,173,214)
-        stroke.Transparency=.1
-        stroke.Parent=label
         E.marks[area]={
-            anchor=anchor,label=label,stroke=stroke,
+            anchor=anchor,label=label,
             position=center
         }
         return E.marks[area]
@@ -3141,7 +3132,6 @@ local IslandESP=(function()
                         mark.position=center
                     end
                     local selected=area.Name==IslandTeleport.chosen
-                    mark.stroke.Color=selected and Color3.fromRGB(255,210,88) or Color3.fromRGB(43,173,214)
                     mark.label.TextColor3=selected and Color3.fromRGB(255,231,143) or Color3.fromRGB(127,236,255)
                     local distance=root and math.floor((root.Position-center).Magnitude) or nil
                     mark.label.Text=(selected and "★ " or "")..
@@ -5687,7 +5677,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.6 - FIX NPC WITCH E PRE-REQUISITOS",
+        "GR HUB V12.7 - ESP ILHAS SEM FUNDO",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
