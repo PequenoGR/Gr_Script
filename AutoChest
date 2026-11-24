@@ -322,6 +322,39 @@ return function(C)
         R.enabled=value==true
         C.State.AutoChest=R.enabled
         if R.enabled then
+            local function disable(name,func)
+                local ok,err=pcall(func)
+                if not ok then
+                    R.lastError="Não foi possível pausar "..name..": "..tostring(err)
+                end
+            end
+            if C.State.AutoSecondary and C.SecondaryQuestAuto then
+                disable("Auto Quest Secundária",function() C.SecondaryQuestAuto.setAuto(false) end)
+            end
+            if C.State.AutoRush and C.AutoRush then
+                disable("Auto Rush",function() C.AutoRush.setAuto(false) end)
+            end
+            if C.State.AutoSkyHermit and C.SkyHermitAuto then
+                disable("Sky Hermit",function() C.SkyHermitAuto.setAuto(false) end)
+            end
+            if C.State.AutoHaki and C.VoxHaki then
+                disable("Auto Haki",function() C.VoxHaki.setFullAuto(false) end)
+            end
+            if C.State.AutoBoss and C.BossFarm then
+                disable("Auto Boss",function() C.BossFarm.setAuto(false) end)
+            end
+            if C.State.AutoRaid and C.Raid then
+                disable("Auto Raid",function() C.Raid.setAuto(false) end)
+            end
+            if C.State.AutoSeaBeast and C.Sea then
+                disable("Auto Sea Beast",function() C.Sea.setAuto(false) end)
+            end
+            if C.State.AutoFarmQuest and C.definirFarm then
+                disable("Auto Farm Quest",function() C.definirFarm(false) end)
+            end
+            if C.State.AutoFarmFruit and C.definirFarmFruta then
+                disable("Auto Farm Fruit",function() C.definirFarmFruta(false) end)
+            end
             R.pending=nil
             R.status="Procurando baús com chaves"
         else
