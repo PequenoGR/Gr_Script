@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, IslandESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -1214,6 +1214,7 @@ local function antiAfk(v)
     end
 end
 local limparFrutasESPGeral
+local limparESPIlhas
 local function pastaFrutas()
     if FeatureState.pastaFrutasCache and FeatureState.pastaFrutasCache.Parent then return FeatureState.pastaFrutasCache end
     local p=workspace:FindFirstChild("Playability")
@@ -1861,6 +1862,8 @@ local function parar()
     State.AutoFarmFruit=false
     FeatureState.frutaOcupada=false
     State.FruitESP=false
+    State.IslandESP=false
+    if limparESPIlhas then pcall(limparESPIlhas) end
     State.AutoStoreFruit=false
     State.AutoStats=false
     State.AutoFishing=false
@@ -3032,6 +3035,165 @@ local IslandTeleport = (function()
     return T
 end)()
 
+
+local IslandESP=(function()
+    local E={
+        enabled=false,marks={},folder=nil,found=0,
+        status="Desligado",updateCount=0,errors=0,lastError="-"
+    }
+    local function clear()
+        for area,mark in pairs(E.marks) do
+            if mark.anchor then
+                pcall(function() mark.anchor:Destroy() end)
+            end
+            E.marks[area]=nil
+        end
+        if E.folder then
+            pcall(function() E.folder:Destroy() end)
+            E.folder=nil
+        end
+        E.found=0
+    end
+    limparESPIlhas=clear
+    local function getFolder()
+        if E.folder and E.folder.Parent then return E.folder end
+        local old=workspace:FindFirstChild("GRHubIslandESPFolder")
+        if old then pcall(function() old:Destroy() end) end
+        local folder=Instance.new("Folder")
+        folder.Name="GRHubIslandESPFolder"
+        folder.Parent=workspace
+        E.folder=folder
+        return folder
+    end
+    local function markerPosition(area,center)
+        local altitude=area:GetAttribute("MapAltitude")
+        local y=math.max(center.Y,typeof(altitude)=="number" and altitude or center.Y)
+        return Vector3.new(center.X,y+75,center.Z)
+    end
+    local function add(area,center)
+        local anchor=Instance.new("Part")
+        anchor.Name="GR_IslandESP_"..area.Name
+        anchor.Size=Vector3.new(.2,.2,.2)
+        anchor.Anchored=true
+        anchor.CanCollide=false
+        anchor.CanTouch=false
+        anchor.CanQuery=false
+        anchor.Transparency=1
+        anchor.CastShadow=false
+        anchor.Position=markerPosition(area,center)
+        anchor.Parent=getFolder()
+        local gui=Instance.new("BillboardGui")
+        gui.Name="GR_IslandLabel"
+        gui.Adornee=anchor
+        gui.AlwaysOnTop=true
+        gui.MaxDistance=1000000
+        gui.Size=UDim2.fromOffset(208,54)
+        gui.StudsOffsetWorldSpace=Vector3.new(0,0,0)
+        gui.Parent=anchor
+        local label=Instance.new("TextLabel")
+        label.Name="NameAndDistance"
+        label.Size=UDim2.fromScale(1,1)
+        label.BackgroundColor3=Color3.fromRGB(15,22,31)
+        label.BackgroundTransparency=.16
+        label.TextColor3=Color3.fromRGB(127,236,255)
+        label.TextStrokeColor3=Color3.fromRGB(0,0,0)
+        label.TextStrokeTransparency=.3
+        label.TextWrapped=true
+        label.Font=Enum.Font.GothamBold
+        label.TextSize=13
+        label.Text=area.Name
+        label.Parent=gui
+        local corner=Instance.new("UICorner")
+        corner.CornerRadius=UDim.new(0,8)
+        corner.Parent=label
+        local stroke=Instance.new("UIStroke")
+        stroke.Thickness=1.5
+        stroke.Color=Color3.fromRGB(43,173,214)
+        stroke.Transparency=.1
+        stroke.Parent=label
+        E.marks[area]={
+            anchor=anchor,label=label,stroke=stroke,
+            position=center
+        }
+        return E.marks[area]
+    end
+    local function refresh()
+        if not E.enabled then return end
+        local map=workspace:FindFirstChild("Map")
+        local areas=map and map:FindFirstChild("Areas")
+        if not areas then
+            E.status="Mapa de ilhas ainda não carregado"
+            clear()
+            return
+        end
+        local _,root=character()
+        local count=0
+        for _,area in ipairs(areas:GetChildren()) do
+            if area:IsA("Folder") then
+                local center=area:GetAttribute("MapCenter")
+                if typeof(center)=="Vector3" then
+                    local mark=E.marks[area]
+                    if not mark or not mark.anchor or not mark.anchor.Parent then
+                        mark=add(area,center)
+                    end
+                    if (mark.position-center).Magnitude>.5 then
+                        mark.anchor.Position=markerPosition(area,center)
+                        mark.position=center
+                    end
+                    local selected=area.Name==IslandTeleport.chosen
+                    mark.stroke.Color=selected and Color3.fromRGB(255,210,88) or Color3.fromRGB(43,173,214)
+                    mark.label.TextColor3=selected and Color3.fromRGB(255,231,143) or Color3.fromRGB(127,236,255)
+                    local distance=root and math.floor((root.Position-center).Magnitude) or nil
+                    mark.label.Text=(selected and "★ " or "")..
+                        area.Name.."\n"..(distance and (distance.." studs") or "Distância indisponível")
+                    count+=1
+                end
+            end
+        end
+        for area,mark in pairs(E.marks) do
+            if not area.Parent or not area:IsDescendantOf(areas)
+                or typeof(area:GetAttribute("MapCenter"))~="Vector3" then
+                pcall(function() mark.anchor:Destroy() end)
+                E.marks[area]=nil
+            end
+        end
+        E.found=count
+        E.updateCount+=1
+        E.status="Exibindo "..count.." ilhas"
+    end
+    function E.setESP(value)
+        E.enabled=toggle(value,E.enabled)
+        State.IslandESP=E.enabled
+        if not E.enabled then
+            clear()
+            E.status="Desligado"
+            return
+        end
+        E.status="Localizando ilhas"
+        local ok,err=pcall(refresh)
+        if not ok then
+            E.errors+=1
+            E.lastError=tostring(err)
+            E.status="Erro: "..tostring(err)
+        end
+    end
+    task.spawn(function()
+        while running() do
+            if E.enabled then
+                local ok,err=pcall(refresh)
+                if not ok then
+                    E.errors+=1
+                    E.lastError=tostring(err)
+                    E.status="Erro: "..tostring(err)
+                    if E.errors%6==1 then warn("[GR Island ESP]",err) end
+                end
+            end
+            task.wait(E.enabled and .8 or 1.5)
+        end
+        clear()
+    end)
+    return E
+end)()
 
 local FruitShopAuto = (function()
     local P={
@@ -4268,7 +4430,7 @@ local VoxHaki = (function()
             return
         end
         if (root.Position-pos).Magnitude>900 then
-            notify("Askard está longe. Viaje à Skull Island pela aba Teleport.")
+            notify("Askard está longe. Viaje à Skull Island pela aba Ilhas.")
             return
         end
         if State.AutoBoss or State.AutoRaid or State.AutoSeaBeast or State.AutoFarmQuest then
@@ -5525,7 +5687,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.4 - AUTO RUSH PLAYER",
+        "GR HUB V12.5 - ABA ILHAS E ESP ILHAS",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5696,6 +5858,12 @@ local function copiarDebug()
         "Ilha TP: "..tostring(IslandTeleport.status),
         "Velocidade do TP: "..tostring(IslandTeleport.speed),
         "TP em viagem: "..tostring(IslandTeleport.traveling),
+        "ESP Ilhas: "..tostring(IslandESP.enabled),
+        "ESP Ilhas status: "..tostring(IslandESP.status),
+        "ESP Ilhas encontradas: "..tostring(IslandESP.found),
+        "ESP Ilhas atualizacoes: "..tostring(IslandESP.updateCount),
+        "ESP Ilhas erros: "..tostring(IslandESP.errors),
+        "ESP Ilhas ultimo erro: "..tostring(IslandESP.lastError),
         "Auto Sea Beast: "..tostring(State.AutoSeaBeast),
         "Sea Beast ESP: "..tostring(State.SeaBeastESP),
         "Tipo de Sea Beast: "..tostring(Sea.mode),
@@ -5910,7 +6078,7 @@ Hub.AddTab("Player","Player","user")
 Hub.AddTab("Fruits","Fruits","grape")
 Hub.AddTab("Fishing","Fishing","anchor")
 Hub.AddTab("Sea","Sea","waves")
-Hub.AddTab("Teleport","Teleport","map-pin")
+Hub.AddTab("Ilhas","Ilhas","map-pin")
 Hub.AddTab("Raid","Raid","swords")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
@@ -5971,11 +6139,13 @@ Hub.CreateDropdown(secSea,"Tipo de Sea Beast",{"Todos","Normal","Ancestral"},Sea
 Hub.CreateDropdown(secSea,"Velocidade para ir ao Sea Beast",{"Suave (230)","Lento (170)","Normal (320)"},Sea.setApproachSpeed)
 Hub.CreateToggle(secSea,"Sea Beast ESP",Sea.setESP)
 Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
-local secTP=Hub.CreateSection("Teleport","ILHAS - TELEPORTE")
+local secTP=Hub.CreateSection("Ilhas","ILHAS - TELEPORTE")
 Hub.CreateDropdown(secTP,"Selecionar ilha",IslandTeleport.options,IslandTeleport.choose)
 Hub.CreateDropdown(secTP,"Velocidade do teleporte",IslandTeleport.speedChoices,IslandTeleport.setSpeed)
 Hub.CreateButton(secTP,"Viajar para ilha",IslandTeleport.go)
 Hub.CreateButton(secTP,"Cancelar viagem",IslandTeleport.stop)
+local secESPIlhas=Hub.CreateSection("Ilhas","ESP ILHAS")
+Hub.CreateToggle(secESPIlhas,"ESP Ilhas",IslandESP.setESP,"map-pin","gr_island_esp")
 local secRaid=Hub.CreateSection("Raid","MARINE FORT RAID")
 Hub.CreateToggle(secRaid,"Auto Raid (ondas, boss e baús)",Raid.setAuto)
 Hub.CreateButton(secRaid,"Teleportar para Raid",Raid.teleport)
