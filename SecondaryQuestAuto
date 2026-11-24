@@ -1576,6 +1576,11 @@ return function(C)
             local sameLocation=tostring(C.localAtual() or "")
             local best,score=nil,math.huge
             R.actionable=0
+            R.actionHandler="QuestSelection"
+            R.objectiveStage=0
+            R.objectiveIndex=0
+            R.progress="-"
+            R.npcReady=false
             R.prerequisiteInfo="-"
             for _,entry in ipairs(secondary) do
                 if entry.name~="The Sky Hermit" and entry.name~="Vox Sense Training" and entry.name~="Vox Armor Training"
@@ -1602,6 +1607,9 @@ return function(C)
             end
             R.name=best.name
             R.objective="Iniciar"
+            R.objectiveStage=0
+            R.objectiveIndex=0
+            R.progress="Não aceita"
             restoreFishing()
             if travelTo(best) then return end
             startQuest(best)
