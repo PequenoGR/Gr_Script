@@ -5700,6 +5700,15 @@ local okChest,errChest=pcall(function()
         mainModulo=mainModulo,
         dadosModulo=dadosModulo,
         IslandTeleport=IslandTeleport,
+        SecondaryQuestAuto=SecondaryQuestAuto,
+        AutoRush=AutoRush,
+        SkyHermitAuto=SkyHermitAuto,
+        VoxHaki=VoxHaki,
+        BossFarm=BossFarm,
+        Raid=Raid,
+        Sea=Sea,
+        definirFarm=definirFarm,
+        definirFarmFruta=definirFarmFruta,
         running=running,
         character=character,
         getRoute=function() return rota end,
@@ -6145,6 +6154,7 @@ local secSecondary=Hub.CreateSection("Main","QUESTS SECUNDÁRIAS")
 Hub.CreateToggle(secSecondary,"Auto Quest Secundária",function(enabled)
     if enabled and SkyHermitAuto.enabled then SkyHermitAuto.setAuto(false) end
     if enabled and AutoRush.enabled then AutoRush.setAuto(false) end
+    if enabled and AutoChest.enabled then AutoChest.setAuto(false) end
     SecondaryQuestAuto.setAuto(enabled)
 end,"scroll-text","gr_auto_secondary")
 local secChest=Hub.CreateSection("Main","AUTO BAÚ")
