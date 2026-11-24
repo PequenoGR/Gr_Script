@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, IslandESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, IslandESP=false, AutoChest=false, ChestESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -790,7 +790,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoChest or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1834,6 +1834,10 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubChestStop)=="function" then pcall(env.GRHubChestStop) end
+    env.GRHubChestStop=nil
+    State.AutoChest=false
+    State.ChestESP=false
     if type(env.GRHubRushStop)=="function" then pcall(env.GRHubRushStop) end
     env.GRHubRushStop=nil
     if type(env.GRHubSkyHermitStop)=="function" then pcall(env.GRHubSkyHermitStop) end
@@ -1898,7 +1902,7 @@ connect(player.CharacterAdded,function(char)
 end)
 local ultimoErroFly=0
 connect(RunService.Heartbeat,function(dt)
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoChest or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -5671,13 +5675,53 @@ env.GRHubRushStop=function()
     if AutoRush and type(AutoRush.stop)=="function" then AutoRush.stop() end
 end
 
+local AutoChest={
+    enabled=false,espEnabled=false,status="Inicializando",espStatus="-",
+    found=0,available=0,withKeys=0,withoutKeys=0,opened=0,
+    requests=0,failures=0,stuck=0
+}
+function AutoChest.setAuto(_) warn("[GR Auto Baú] Módulo indisponível") end
+function AutoChest.setESP(_) warn("[GR ESP Baú] Módulo indisponível") end
+function AutoChest.setRarities(_) end
+function AutoChest.showStatus() warn("[GR Auto Baú] "..tostring(AutoChest.status)) end
+local okChest,errChest=pcall(function()
+    local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/AutoChest"
+    local ok,code=pcall(function()
+        return game:HttpGet(url.."?v=12.8&t="..tostring(os.time()),true)
+    end)
+    if not ok or type(code)~="string" or code=="" then
+        code=game:HttpGet(url,true)
+    end
+    if type(code)~="string" or code=="" then error("AutoChest vazio") end
+    local factory=assert(loadstring(code))
+    AutoChest=factory()({
+        player=player,
+        State=State,
+        mainModulo=mainModulo,
+        dadosModulo=dadosModulo,
+        IslandTeleport=IslandTeleport,
+        running=running,
+        character=character,
+        getRoute=function() return rota end,
+        definirDestino=definirDestino,
+        liberarVoo=liberarVoo
+    })
+end)
+if not okChest then
+    AutoChest.status="Falha ao carregar: "..tostring(errChest)
+    warn("[GR Auto Chest]",errChest)
+end
+env.GRHubChestStop=function()
+    if AutoChest and type(AutoChest.stop)=="function" then AutoChest.stop() end
+end
+
 local function copiarDebug()
     local d=lerDados()
     local _,root=character()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.7 - ESP ILHAS SEM FUNDO",
+        "GR HUB V12.8 - AUTO BAU E ESP BAUS",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5739,6 +5783,24 @@ local function copiarDebug()
         "Tentativas compra frutas: "..tostring(FruitShopAuto.attempts),
         "Compras confirmadas pelo saldo: "..tostring(FruitShopAuto.purchases),
         "Última fruta da loja: "..tostring(FruitShopAuto.lastFruit),
+        "Auto Baú: "..tostring(AutoChest.enabled),
+        "ESP Baús: "..tostring(AutoChest.espEnabled),
+        "Auto Baú status: "..tostring(AutoChest.status),
+        "ESP Baús status: "..tostring(AutoChest.espStatus),
+        "Auto Baú encontrados: "..tostring(AutoChest.found),
+        "Auto Baú disponíveis: "..tostring(AutoChest.available),
+        "Auto Baú com chave: "..tostring(AutoChest.withKeys),
+        "Auto Baú sem chave: "..tostring(AutoChest.withoutKeys),
+        "Auto Baú abertos confirmados: "..tostring(AutoChest.opened),
+        "Auto Baú pedidos OpenChest: "..tostring(AutoChest.requests),
+        "Auto Baú falhas: "..tostring(AutoChest.failures),
+        "Auto Baú temporariamente ignorados: "..tostring(AutoChest.stuck),
+        "Auto Baú alvo: "..tostring(AutoChest.target and AutoChest.target.Name),
+        "Auto Baú raridade alvo: "..tostring(AutoChest.targetRarity),
+        "Auto Baú distância alvo: "..tostring(AutoChest.distance),
+        "Auto Baú último aberto: "..tostring(AutoChest.lastOpened),
+        "Auto Baú último pedido: "..tostring(AutoChest.lastRequest),
+        "Auto Baú último erro: "..tostring(AutoChest.lastError),
         "Auto Rush: "..tostring(AutoRush.enabled),
         "Auto Rush status: "..tostring(AutoRush.status),
         "Auto Rush etapa: "..tostring(AutoRush.stage),
@@ -6085,6 +6147,19 @@ Hub.CreateToggle(secSecondary,"Auto Quest Secundária",function(enabled)
     if enabled and AutoRush.enabled then AutoRush.setAuto(false) end
     SecondaryQuestAuto.setAuto(enabled)
 end,"scroll-text","gr_auto_secondary")
+local secChest=Hub.CreateSection("Main","AUTO BAÚ")
+Hub.CreateToggle(secChest,"Auto Baú",AutoChest.setAuto,"package-open","gr_auto_chest")
+Hub.CreateToggle(secChest,"ESP Baús",AutoChest.setESP,"eye","gr_chest_esp")
+if type(Hub.CreateMultiDropdown)=="function" then
+    Hub.CreateMultiDropdown(secChest,"Raridades dos baús",{
+        "Common","Uncommon","Rare","Epic","Legendary"
+    },AutoChest.setRarities,{"Common","Uncommon","Rare","Epic","Legendary"})
+else
+    Hub.CreateDropdown(secChest,"Raridade dos baús",{
+        "Todas","Common","Uncommon","Rare","Epic","Legendary"
+    },AutoChest.setRarities)
+end
+Hub.CreateButton(secChest,"Status dos baús",AutoChest.showStatus,"info")
 local secBoss=Hub.CreateSection("Main","AUTO BOSS")
 local bossSelector
 local function refreshBossList()
