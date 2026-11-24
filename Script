@@ -5545,7 +5545,7 @@ local SecondaryQuestAuto={enabled=false,status="Inicializando",name=nil,objectiv
 function SecondaryQuestAuto.setAuto(_) warn("[GR Secondary Quest] Módulo indisponível") end
 local okSecondary,errSecondary=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SecondaryQuestAuto"
-    local fresh=url.."?v=12.3&t="..tostring(os.time())
+    local fresh=url.."?v=12.6&t="..tostring(os.time())
     local okGet,code=pcall(function() return game:HttpGet(fresh,true) end)
     if not okGet or type(code)~="string" or code=="" then
         code=game:HttpGet(url,true)
@@ -5687,7 +5687,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.5 - ABA ILHAS E ESP ILHAS",
+        "GR HUB V12.6 - FIX NPC WITCH E PRE-REQUISITOS",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -5816,6 +5816,11 @@ local function copiarDebug()
         "Phantom Tablet corredor falhas: "..tostring(SecondaryQuestAuto.phantomRunBlocked),
         "Secondary Quest NPC ultima acao: "..tostring(SecondaryQuestAuto.npcStatus),
         "Secondary Quest NPC pedidos: "..tostring(SecondaryQuestAuto.npcRequests),
+        "Secondary Quest requisito pendente: "..tostring(SecondaryQuestAuto.prerequisiteInfo),
+        "Secondary Quest pedidos sem confirmacao: "..tostring(SecondaryQuestAuto.startAttemptsCurrent),
+        "Secondary Quest aceites confirmados: "..tostring(SecondaryQuestAuto.startConfirmed),
+        "Secondary Quest quest pulada: "..tostring(SecondaryQuestAuto.startRejected),
+        "Secondary Quest quests sem aceite: "..tostring(SecondaryQuestAuto.startRetryCount),
         "Secondary Quest Bobo tentativas: "..tostring(SecondaryQuestAuto.tomatoAttempts),
         "Secondary Quest Bobo minigame ativo: "..tostring(SecondaryQuestAuto.tomatoMiniActive),
         "Secondary Quest Bobo nota: "..tostring(SecondaryQuestAuto.tomatoNote),
