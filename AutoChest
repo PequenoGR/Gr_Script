@@ -1,0 +1,369 @@
+return function(C)
+    local player=C.player
+    local R={
+        enabled=false,espEnabled=false,status="Desligado",espStatus="Desligado",
+        rarities={"Common","Uncommon","Rare","Epic","Legendary"},
+        selected={},marks={},blocked=setmetatable({},{__mode="k"}),
+        attempts=setmetatable({},{__mode="k"}),pending=nil,
+        target=nil,targetRarity="-",distance=nil,
+        found=0,available=0,withKeys=0,withoutKeys=0,openable=0,
+        keys={},requests=0,opened=0,failures=0,stuck=0,
+        lastOpened="-",lastRequest="-",lastError="-",scans=0
+    }
+    local colors={
+        Common=Color3.fromRGB(155,155,155),
+        Uncommon=Color3.fromRGB(13,221,120),
+        Rare=Color3.fromRGB(2,147,244),
+        Epic=Color3.fromRGB(207,0,230),
+        Legendary=Color3.fromRGB(255,191,0)
+    }
+    for _,rarity in ipairs(R.rarities) do R.selected[rarity]=true end
+    local chestUtils=C.mainModulo and C.mainModulo.ChestsUtils
+    local toolsUtils=C.mainModulo and C.mainModulo.ToolsUtils
+    local function folder()
+        local ignore=workspace:FindFirstChild("IgnoreList")
+        local int=ignore and ignore:FindFirstChild("Int")
+        return int and int:FindFirstChild("Chests")
+    end
+    local function charRoot()
+        local character,root,hum=C.character()
+        return root,hum,root~=nil and hum~=nil and hum.Health>0
+    end
+    local function keyCount(rarity)
+        if not toolsUtils or type(toolsUtils.GetInventoryAmount)~="function" then
+            return 0
+        end
+        local name=chestUtils and type(chestUtils.GetKeyName)=="function"
+            and chestUtils.GetKeyName(rarity) or (rarity.." Chest Key")
+        local ok,value=pcall(toolsUtils.GetInventoryAmount,nil,name)
+        return ok and math.max(0,tonumber(value) or 0) or 0
+    end
+    local function refreshKeys()
+        for _,rarity in ipairs(R.rarities) do R.keys[rarity]=keyCount(rarity) end
+    end
+    local function chestRarity(model)
+        if not model or not model:IsA("Model") or not model:FindFirstChild("Bau") then return nil end
+        local rarity=model:GetAttribute("Rarity")
+        if not colors[rarity] then return nil end
+        if model:GetAttribute("Sellable")==false then return nil end
+        if chestUtils and type(chestUtils.GetRarity)=="function" then
+            local ok,found=pcall(chestUtils.GetRarity,model)
+            if not ok or found~=rarity then return nil end
+        end
+        return rarity
+    end
+    local function available(model)
+        if not model or not model.Parent then return false end
+        local owner=model:GetAttribute("Owner")
+        local questOwner=model:GetAttribute("QuestOwner")
+        if owner~=nil and owner~=player.UserId then return false end
+        if questOwner~=nil then return false end
+        if model:GetAttribute("InCooldown") then return false end
+        if model:GetAttribute("Carrier")~=nil then return false end
+        if chestUtils and type(chestUtils.CanOpen)=="function" then
+            local ok,yes=pcall(chestUtils.CanOpen,model)
+            if not ok or not yes then return false end
+        end
+        return true
+    end
+    local function chestPosition(model)
+        if not model or not model.Parent then return nil end
+        local body=model:FindFirstChild("Bau")
+        local part=body and body:FindFirstChild("RootPart",true)
+        if part and part:IsA("BasePart") then return part.Position,part end
+        return model:GetPivot().Position,model
+    end
+    local function dropMarker(chest)
+        local mark=R.marks[chest]
+        if not mark then return end
+        R.marks[chest]=nil
+        if mark.gui then pcall(function() mark.gui:Destroy() end) end
+        if mark.highlight then pcall(function() mark.highlight:Destroy() end) end
+    end
+    local function clearESP()
+        for chest in pairs(R.marks) do dropMarker(chest) end
+        R.espStatus="Desligado"
+    end
+    local function addMarker(chest,rarity,adornee)
+        local gui=Instance.new("BillboardGui")
+        gui.Name="GRHubChestESP"
+        gui.Size=UDim2.fromOffset(170,52)
+        gui.StudsOffsetWorldSpace=Vector3.new(0,3.5,0)
+        gui.AlwaysOnTop=true
+        gui.MaxDistance=100000
+        gui.Adornee=adornee
+        gui.Parent=chest
+        local text=Instance.new("TextLabel")
+        text.Name="ChestInfo"
+        text.BackgroundTransparency=1
+        text.Size=UDim2.fromScale(1,1)
+        text.Font=Enum.Font.GothamBold
+        text.TextSize=13
+        text.TextColor3=colors[rarity]
+        text.TextStrokeColor3=Color3.fromRGB(0,0,0)
+        text.TextStrokeTransparency=.1
+        text.TextWrapped=true
+        text.Parent=gui
+        local highlight=Instance.new("Highlight")
+        highlight.Name="GRHubChestHighlight"
+        highlight.Adornee=chest
+        highlight.FillColor=colors[rarity]
+        highlight.OutlineColor=colors[rarity]
+        highlight.FillTransparency=.86
+        highlight.OutlineTransparency=0
+        highlight.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent=chest
+        local mark={gui=gui,label=text,highlight=highlight}
+        R.marks[chest]=mark
+        return mark
+    end
+    local function updateESP(found,root)
+        if not R.espEnabled then
+            if next(R.marks) then clearESP() end
+            return
+        end
+        local seen={}
+        for _,entry in ipairs(found) do
+            local model,rarity=entry.model,entry.rarity
+            if R.selected[rarity] then
+                seen[model]=true
+                local mark=R.marks[model]
+                if not mark or not mark.gui or not mark.gui.Parent then
+                    mark=addMarker(model,rarity,entry.anchor)
+                else
+                    mark.gui.Adornee=entry.anchor
+                end
+                local dist=root and math.floor((root.Position-entry.position).Magnitude) or nil
+                local key=R.keys[rarity] or 0
+                local open=entry.ready
+                mark.label.Text=rarity.." Chest\n"..
+                    (dist and (dist.." studs") or "? studs")..
+                    (open and (" | Chaves: "..key) or " | Indisponível")
+                mark.highlight.Enabled=open
+            end
+        end
+        for model in pairs(R.marks) do
+            if not seen[model] or not model.Parent then dropMarker(model) end
+        end
+        R.espStatus="ESP: "..tostring(#found).." baús detectados"
+    end
+    local function clearTarget()
+        local route=C.getRoute()
+        if route and route.chave=="AutoChest" then C.liberarVoo() end
+        R.target=nil
+        R.targetRarity="-"
+        R.distance=nil
+    end
+    local function busy()
+        local s=C.State
+        return s.AutoFarmQuest or s.AutoFarmFruit or s.AutoSecondary
+            or s.AutoRush or s.AutoSkyHermit or s.AutoHaki
+            or s.AutoBoss or s.AutoRaid or s.AutoSeaBeast
+            or C.IslandTeleport.traveling
+    end
+    local function finished(chest,rarity)
+        R.opened+=1
+        R.lastOpened=rarity.." / "..chest.Name
+        R.status="Baú confirmado: "..R.lastOpened..
+            " | Total: "..R.opened
+        R.pending=nil
+        R.attempts[chest]=nil
+        R.blocked[chest]=os.clock()+6
+        clearTarget()
+    end
+    local function checkPending()
+        local pending=R.pending
+        if not pending then return false end
+        local model=pending.chest
+        if not model.Parent or model:GetAttribute("InCooldown") then
+            finished(model,pending.rarity)
+            return false
+        end
+        if os.clock()-pending.time<3.5 then
+            R.status="Aguardando confirmação: "..pending.rarity
+            return true
+        end
+        R.pending=nil
+        if (R.attempts[model] or 0)>=2 then
+            R.blocked[model]=os.clock()+45
+            R.stuck+=1
+            R.status="Sem confirmação; ignorando baú por 45 s"
+        else
+            R.status="Baú não confirmou: tentando outra vez"
+        end
+        clearTarget()
+        return false
+    end
+    local function scan()
+        if not R.enabled and not R.espEnabled then return end
+        local folderNow=folder()
+        local root,hum,valid=charRoot()
+        if not folderNow then
+            R.status="Pasta de baús ainda não carregada"
+            R.found=0;R.available=0;R.withKeys=0
+            if R.espEnabled then clearESP() end
+            return
+        end
+        refreshKeys()
+        R.scans+=1
+        local objects={}
+        local eligible={}
+        local total,ready,keysAvail,missing=0,0,0,0
+        for _,chest in ipairs(folderNow:GetChildren()) do
+            local rarity=chestRarity(chest)
+            if rarity then
+                total+=1
+                local p,anchor=chestPosition(chest)
+                if p then
+                    local usable=available(chest)
+                    if usable then ready+=1 end
+                    local hasKey=(R.keys[rarity] or 0)>0
+                    if usable and hasKey then keysAvail+=1 end
+                    if usable and not hasKey then missing+=1 end
+                    local entry={model=chest,rarity=rarity,position=p,
+                        anchor=anchor,ready=usable,hasKey=hasKey}
+                    objects[#objects+1]=entry
+                    if R.selected[rarity] and usable and hasKey and
+                        valid and not (R.blocked[chest] and R.blocked[chest]>os.clock()) then
+                        local nameNumber=tonumber(chest.Name)
+                        if nameNumber then
+                            entry.id=nameNumber
+                            entry.distance=(root.Position-p).Magnitude
+                            eligible[#eligible+1]=entry
+                        end
+                    end
+                end
+            end
+        end
+        R.found=total
+        R.available=ready
+        R.withKeys=keysAvail
+        R.withoutKeys=missing
+        R.openable=#eligible
+        updateESP(objects,root)
+        if not R.enabled then return end
+        if not valid then R.status="Aguardando personagem";clearTarget();return end
+        if busy() then
+            R.status="Auto Baú pausado: outra automação em execução"
+            clearTarget()
+            return
+        end
+        if checkPending() then return end
+        table.sort(eligible,function(a,b) return a.distance<b.distance end)
+        local entry=eligible[1]
+        if not entry then
+            R.status=total==0 and "Nenhum baú encontrado"
+                or (missing>0 and keysAvail==0 and "Baús disponíveis, mas sem chaves"
+                or "Nenhum baú selecionado e disponível")
+            clearTarget()
+            return
+        end
+        local chest,rarity=entry.model,entry.rarity
+        R.target=chest
+        R.targetRarity=rarity
+        R.distance=math.floor(entry.distance*10)/10
+        if entry.distance>8.4 then
+            C.definirDestino(entry.position+Vector3.new(0,1.5,0),"AutoChest")
+            R.status="Indo abrir "..rarity.." ("..math.floor(entry.distance).." studs)"
+            return
+        end
+        clearTarget()
+        R.target=chest
+        R.targetRarity=rarity
+        R.distance=math.floor(entry.distance*10)/10
+        if not available(chest) or (R.keys[rarity] or 0)<=0 then return end
+        local attempts=R.attempts[chest] or 0
+        if attempts>=2 then
+            R.blocked[chest]=os.clock()+45
+            R.stuck+=1
+            return
+        end
+        R.attempts[chest]=attempts+1
+        local network=C.dadosModulo and C.dadosModulo.Network
+        if not network then
+            R.failures+=1
+            R.lastError="Elysium Network não carregado"
+            R.status=R.lastError
+            R.blocked[chest]=os.clock()+10
+            return
+        end
+        local ok,err=pcall(function()
+            network:FireServer("Chests","OpenChest",entry.id)
+        end)
+        if not ok then
+            R.failures+=1
+            R.lastError=tostring(err)
+            R.status="Falha no comando OpenChest"
+            R.blocked[chest]=os.clock()+20
+            return
+        end
+        R.requests+=1
+        R.lastRequest=rarity.." #"..tostring(entry.id)
+        R.pending={chest=chest,rarity=rarity,time=os.clock()}
+        R.status="OpenChest enviado; aguardando confirmação: "..rarity
+    end
+    function R.setRarities(values)
+        local chosen={}
+        if type(values)=="string" then
+            if values=="Todas" then
+                for _,name in ipairs(R.rarities) do chosen[name]=true end
+            elseif colors[values] then chosen[values]=true end
+        elseif type(values)=="table" then
+            for _,value in pairs(values) do
+                local name=type(value)=="table" and
+                    (value.Name or value.Value or value.Valor) or value
+                if colors[name] then chosen[name]=true end
+            end
+        end
+        R.selected=chosen
+        clearTarget()
+    end
+    function R.setAuto(value)
+        R.enabled=value==true
+        C.State.AutoChest=R.enabled
+        if R.enabled then
+            R.pending=nil
+            R.status="Procurando baús com chaves"
+        else
+            R.pending=nil
+            clearTarget()
+            R.status="Desligado"
+        end
+    end
+    function R.setESP(value)
+        R.espEnabled=value==true
+        C.State.ChestESP=R.espEnabled
+        if R.espEnabled then
+            R.espStatus="Procurando baús"
+        else
+            clearESP()
+        end
+    end
+    function R.showStatus()
+        print("[GR Hub Auto Baú] "..R.status.." | Encontrados: "..R.found..
+            " | Com chaves: "..R.withKeys.." | Confirmados: "..R.opened..
+            " | Enviados: "..R.requests.." | Filtro: "..R.targetRarity)
+    end
+    function R.stop()
+        R.setAuto(false)
+        R.setESP(false)
+        clearTarget()
+        clearESP()
+    end
+    task.spawn(function()
+        while C.running() do
+            if R.enabled or R.espEnabled then
+                local ok,err=pcall(scan)
+                if not ok then
+                    R.failures+=1
+                    R.lastError=tostring(err)
+                    R.status="Erro Auto Baú: "..R.lastError
+                    if R.failures%5==1 then warn("[GR Hub Auto Baú]",err) end
+                end
+            end
+            task.wait((R.enabled or R.espEnabled) and .65 or 1.2)
+        end
+        R.stop()
+    end)
+    return R
+end
