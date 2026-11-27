@@ -132,9 +132,10 @@ return function(C)
         local now=os.clock()
         if now<npcCacheUntil then return npcCachePosition end
         npcCacheUntil=now+2.5
-        if interest and type(interest.Get)=="function" then
+        local points=interest or (C.mainModulo and C.mainModulo.InterestPoints)
+        if points and type(points.Get)=="function" then
             for _,id in ipairs({"Character_Mysterious Monk","Character_MysteriousMonk"}) do
-                local ok,v=pcall(function() return interest:Get(id) end)
+                local ok,v=pcall(function() return points:Get(id) end)
                 local p=ok and pos(v)
                 if p then npcCachePosition=p;return p end
             end
@@ -144,10 +145,15 @@ return function(C)
         local play=workspace:FindFirstChild("Playability")
         for _,scope in ipairs({int or false,play or false}) do
             if scope then
-                for _,v in ipairs(scope:GetDescendants()) do
+                local folder=scope:FindFirstChild("NPCs") or scope
+                local function normalized(value)
+                    return tostring(value or ""):lower():gsub("[^%w]","")
+                end
+                for _,v in ipairs(folder:GetDescendants()) do
                     if (v:IsA("Model") or v:IsA("BasePart")) and
-                        (v.Name=="Mysterious Monk" or v.Name=="MysteriousMonk" or
-                        v:GetAttribute("OriginalName")=="Mysterious Monk") then
+                        (normalized(v.Name)=="mysteriousmonk" or
+                        normalized(v:GetAttribute("OriginalName"))=="mysteriousmonk" or
+                        normalized(v:GetAttribute("NPCName"))=="mysteriousmonk") then
                         local p=pos(v)
                         if p then npcCachePosition=p;return p end
                     end
