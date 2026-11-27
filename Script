@@ -40,7 +40,7 @@ local CAMPANHAS = {
 }
 
 
-local INTERFACE_URL = "https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/InterfaceScript?v=boneco-v2"
+local INTERFACE_URL = "https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/InterfaceScript?v=13.0"
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local RS = game:GetService("ReplicatedStorage")
@@ -502,7 +502,7 @@ local function valido(e)
 end
 
 local function reindexar()
-    if os.clock()-ultimaIndexacao<0.8 then return end
+    if os.clock()-ultimaIndexacao<2.2 then return end
     ultimaIndexacao=os.clock()
     table.clear(indexInimigos)
     local vistos={}
@@ -582,7 +582,7 @@ local function encontrarInimigo(nome,root)
         return melhor
     end
     local melhor=buscar()
-    if not melhor and os.clock()-ultimaBuscaCompleta>5 then
+    if not melhor and os.clock()-ultimaBuscaCompleta>11 then
         ultimaBuscaCompleta=os.clock()
         local vistos={}
         for _,e in ipairs(indexInimigos) do vistos[e]=true end
@@ -609,9 +609,15 @@ end
 local function pontoGrupoInimigo(nome,root)
     local agora=os.clock()
     local c=cacheGrupo[nome]
-    if c and agora-c.t<1.5 and c.p and c.p.Parent then
-        debugBusca.grupo=c.p:GetFullName()
-        return c.p.Position
+    if c and agora-c.t<5 then
+        if c.p and c.p.Parent then
+            debugBusca.grupo=c.p:GetFullName()
+            return c.p.Position
+        end
+        if c.miss then
+            debugBusca.grupo="Sem marcador no cache: "..nome
+            return nil
+        end
     end
     local ignore=workspace:FindFirstChild("IgnoreList")
     local data=ignore and ignore:FindFirstChild("Data")
@@ -638,6 +644,7 @@ local function pontoGrupoInimigo(nome,root)
         debugBusca.grupo=melhor:GetFullName()
         return melhor.Position
     end
+    cacheGrupo[nome]={miss=true,t=agora}
     debugBusca.grupo="Sem marcador para "..nome
     return nil
 end
@@ -3762,7 +3769,7 @@ local BossFarm = (function()
     end
     local function collectDanger(root,enemy,boss)
         local now=os.clock()
-        if now-B.lastDangerScan<.075 then return B.zones end
+        if now-B.lastDangerScan<.12 then return B.zones end
         B.lastDangerScan=now
         B.scanCount+=1
         local zones,seen={},{}
@@ -5535,7 +5542,7 @@ local SecondaryQuestAuto={enabled=false,status="Inicializando",name=nil,objectiv
 function SecondaryQuestAuto.setAuto(_) warn("[GR Secondary Quest] Módulo indisponível") end
 local okSecondary,errSecondary=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SecondaryQuestAuto"
-    local fresh=url.."?v=12.6&t="..tostring(os.time())
+    local fresh=url.."?v=13.0&t="..tostring(os.time())
     local okGet,code=pcall(function() return game:HttpGet(fresh,true) end)
     if not okGet or type(code)~="string" or code=="" then
         code=game:HttpGet(url,true)
@@ -5594,7 +5601,12 @@ local SkyHermitAuto={
 function SkyHermitAuto.setAuto(_) warn("[GR Auto Sky Hermit] Módulo indisponível") end
 local okSky,errSky=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/SkyHermitAuto"
-    local code=game:HttpGet(url)
+    local ok,code=pcall(function()
+        return game:HttpGet(url.."?v=13.0&t="..tostring(os.time()),true)
+    end)
+    if not ok or type(code)~="string" or code=="" then
+        code=game:HttpGet(url,true)
+    end
     if type(code)~="string" or code=="" then error("SkyHermitAuto vazio") end
     local factory=assert(loadstring(code))
     SkyHermitAuto=factory()({
@@ -5635,7 +5647,7 @@ local AutoRush={enabled=false,status="Inicializando",stage="-",requests=0,failur
 function AutoRush.setAuto(_) warn("[GR Auto Rush] Módulo indisponível") end
 local okRush,errRush=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/AutoRush"
-    local code=game:HttpGet(url.."?v=12.4&t="..tostring(os.time()),true)
+    local code=game:HttpGet(url.."?v=13.0&t="..tostring(os.time()),true)
     if type(code)~="string" or code=="" then code=game:HttpGet(url,true) end
     local factory=assert(loadstring(code))
     AutoRush=factory()({
@@ -5677,7 +5689,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V12.9 - SEM AUTO BAU",
+        "GR HUB V13.0 - REVISAO GERAL",
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -6059,8 +6071,13 @@ end
 (function()
 env.GRHub=nil
 local ok,erro=pcall(function()
-    local source=game:HttpGet(INTERFACE_URL)
-    if not source or source=="" then error("Interface vazia") end
+    local okGet,source=pcall(function()
+        return game:HttpGet(INTERFACE_URL.."&t="..tostring(os.time()),true)
+    end)
+    if not okGet or type(source)~="string" or source=="" then
+        source=game:HttpGet(INTERFACE_URL,true)
+    end
+    if type(source)~="string" or source=="" then error("Interface vazia") end
     assert(loadstring(source))()
 end)
 if not ok then warn("[GR Hub] Erro na interface:",erro);parar();return end
@@ -6068,6 +6085,61 @@ local inicio=os.clock()
 while not env.GRHub and os.clock()-inicio<5 do task.wait(0.05) end
 local Hub=env.GRHub
 if not Hub then warn("[GR Hub] Biblioteca não expôs GRHub");parar();return end
+local movementOwner="Nenhum"
+local movementSwitches={
+    {name="Quest",id="gr_auto_farm_quest",active=function() return State.AutoFarmQuest end,
+     stop=function() definirFarm(false) end},
+    {name="Fruta",id="gr_auto_farm_fruit",active=function() return State.AutoFarmFruit end,
+     stop=function() definirFarmFruta(false) end},
+    {name="Boss",id="gr_auto_boss",active=function() return State.AutoBoss end,
+     stop=function() BossFarm.setAuto(false) end},
+    {name="Secundária",id="gr_auto_secondary",active=function() return SecondaryQuestAuto.enabled end,
+     stop=function() SecondaryQuestAuto.setAuto(false) end},
+    {name="Rush",id="gr_auto_rush",active=function() return AutoRush.enabled end,
+     stop=function() AutoRush.setAuto(false) end},
+    {name="Sky Hermit",id="gr_auto_sky_hermit",active=function() return SkyHermitAuto.enabled end,
+     stop=function() SkyHermitAuto.setAuto(false) end},
+    {name="Haki",id="gr_auto_haki",active=function() return State.AutoHaki end,
+     stop=function() VoxHaki.setFullAuto(false) end},
+    {name="Sea",id="gr_auto_sea_beast",active=function() return State.AutoSeaBeast end,
+     stop=function() Sea.setAuto(false) end},
+    {name="Raid",id="gr_auto_raid",active=function() return State.AutoRaid end,
+     stop=function() Raid.setAuto(false) end}
+}
+local movementConflicts=0
+local function claimMovement(name)
+    movementOwner=name
+    for _,spec in ipairs(movementSwitches) do
+        if spec.name~=name then
+            local ok,active=pcall(spec.active)
+            if ok and active then
+                local stopped,err=pcall(spec.stop)
+                if stopped then
+                    movementConflicts+=1
+                    if type(Hub.SetToggleState)=="function" then
+                        Hub.SetToggleState(spec.id,false,false)
+                    end
+                else
+                    warn("[GR Hub] Falha ao parar "..spec.name..": "..tostring(err))
+                end
+            end
+        end
+    end
+    if FeatureState.islandTraveling and IslandTeleport and
+        type(IslandTeleport.stop)=="function" then
+        IslandTeleport.stop()
+    end
+end
+local function movementToggle(name,setter)
+    return function(enabled)
+        if enabled==true then
+            claimMovement(name)
+        elseif movementOwner==name then
+            movementOwner="Nenhum"
+        end
+        setter(enabled==true)
+    end
+end
 Hub.AddTab("Main","Main","rbxassetid://78780430891192")
 Hub.AddTab("Player","Player","user")
 Hub.AddTab("Fruits","Fruits","grape")
@@ -6078,13 +6150,11 @@ Hub.AddTab("Raid","Raid","swords")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
-Hub.CreateToggle(farm,"Auto Farm Quest",definirFarm)
+Hub.CreateToggle(farm,"Auto Farm Quest",movementToggle("Quest",definirFarm),nil,"gr_auto_farm_quest")
 local secSecondary=Hub.CreateSection("Main","QUESTS SECUNDÁRIAS")
-Hub.CreateToggle(secSecondary,"Auto Quest Secundária",function(enabled)
-    if enabled and SkyHermitAuto.enabled then SkyHermitAuto.setAuto(false) end
-    if enabled and AutoRush.enabled then AutoRush.setAuto(false) end
-    SecondaryQuestAuto.setAuto(enabled)
-end,"scroll-text","gr_auto_secondary")
+Hub.CreateToggle(secSecondary,"Auto Quest Secundária",
+    movementToggle("Secundária",SecondaryQuestAuto.setAuto),
+    "scroll-text","gr_auto_secondary")
 local secBoss=Hub.CreateSection("Main","AUTO BOSS")
 local bossSelector
 local function refreshBossList()
@@ -6094,7 +6164,8 @@ local function refreshBossList()
     print("[GR Hub Auto Boss] "..tostring(#names-1).." bosses encontrados.")
 end
 refreshBossList()
-Hub.CreateToggle(secBoss,"Auto Boss",BossFarm.setAuto,"crown",false)
+Hub.CreateToggle(secBoss,"Auto Boss",movementToggle("Boss",BossFarm.setAuto),
+    "crown","gr_auto_boss")
 Hub.CreateDropdown(secBoss,"Modo de Esquiva",{"Equilibrado","Agressivo","Defensivo"},BossFarm.setDodgeMode)
 Hub.CreateDropdown(secBoss,"Velocidade para ir ao Boss",{"Suave (180)","Lento (120)","Normal (280)","Rápido (400)"},BossFarm.setApproachSpeed)
 Hub.CreateDropdown(secBoss,"Velocidade de retorno",{"Normal (360)","Suave (220)","Rápido (550)"},BossFarm.setReturnSpeed)
@@ -6111,7 +6182,8 @@ else
         else setFrutasEscolhidas({v}) end
     end)
 end
-Hub.CreateToggle(secFrutas,"Auto Farm Fruit (TP)",definirFarmFruta)
+Hub.CreateToggle(secFrutas,"Auto Farm Fruit (TP)",
+    movementToggle("Fruta",definirFarmFruta),nil,"gr_auto_farm_fruit")
 Hub.CreateToggle(secFrutas,"Fruit ESP",definirESPFruta)
 Hub.CreateToggle(secFrutas,"Auto Store Fruit",definirStoreFruta)
 local secGacha=Hub.CreateSection("Fruits","AUTO GACHA - GIRAR FRUTAS")
@@ -6133,7 +6205,8 @@ local secSea=Hub.CreateSection("Sea","SEA BEAST")
 Hub.CreateDropdown(secSea,"Tipo de Sea Beast",{"Todos","Normal","Ancestral"},Sea.setMode)
 Hub.CreateDropdown(secSea,"Velocidade para ir ao Sea Beast",{"Suave (230)","Lento (170)","Normal (320)"},Sea.setApproachSpeed)
 Hub.CreateToggle(secSea,"Sea Beast ESP",Sea.setESP)
-Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",Sea.setAuto)
+Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",
+    movementToggle("Sea",Sea.setAuto),nil,"gr_auto_sea_beast")
 local secTP=Hub.CreateSection("Ilhas","ILHAS - TELEPORTE")
 Hub.CreateDropdown(secTP,"Selecionar ilha",IslandTeleport.options,IslandTeleport.choose)
 Hub.CreateDropdown(secTP,"Velocidade do teleporte",IslandTeleport.speedChoices,IslandTeleport.setSpeed)
@@ -6142,24 +6215,22 @@ Hub.CreateButton(secTP,"Cancelar viagem",IslandTeleport.stop)
 local secESPIlhas=Hub.CreateSection("Ilhas","ESP ILHAS")
 Hub.CreateToggle(secESPIlhas,"ESP Ilhas",IslandESP.setESP,"map-pin","gr_island_esp")
 local secRaid=Hub.CreateSection("Raid","MARINE FORT RAID")
-Hub.CreateToggle(secRaid,"Auto Raid (ondas, boss e baús)",Raid.setAuto)
+Hub.CreateToggle(secRaid,"Auto Raid (ondas, boss e baús)",
+    movementToggle("Raid",Raid.setAuto),nil,"gr_auto_raid")
 Hub.CreateButton(secRaid,"Teleportar para Raid",Raid.teleport)
 local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
 local hakiPanel=Hub.CreateSection("Player","HAKI / VOX")
-Hub.CreateToggle(hakiPanel,"Auto Haki",function(enabled)
-    VoxHaki.setFullAuto(enabled==true)
-end,"zap","gr_auto_haki")
+Hub.CreateToggle(hakiPanel,"Auto Haki",
+    movementToggle("Haki",VoxHaki.setFullAuto),"zap","gr_auto_haki")
 local skyPanel=Hub.CreateSection("Player","SKY HERMIT / HEAVENSTEP")
-Hub.CreateToggle(skyPanel,"Auto Sky Hermit (7 bandeiras)",function(enabled)
-    if enabled and AutoRush.enabled then AutoRush.setAuto(false) end
-    SkyHermitAuto.setAuto(enabled==true)
-end,"flag","gr_auto_sky_hermit")
+Hub.CreateToggle(skyPanel,"Auto Sky Hermit (7 bandeiras)",
+    movementToggle("Sky Hermit",SkyHermitAuto.setAuto),
+    "flag","gr_auto_sky_hermit")
 local rushPanel=Hub.CreateSection("Player","RUSH / SORU")
-Hub.CreateToggle(rushPanel,"Auto Rush",function(enabled)
-    AutoRush.setAuto(enabled==true)
-end,"wind","gr_auto_rush")
+Hub.CreateToggle(rushPanel,"Auto Rush",
+    movementToggle("Rush",AutoRush.setAuto),"wind","gr_auto_rush")
 local reset=Hub.CreateSection("Player","PERSONAGEM")
 Hub.CreateButton(reset,"Resetar Personagem",function()
     liberarVoo()
