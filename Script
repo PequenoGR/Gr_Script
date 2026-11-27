@@ -156,7 +156,7 @@ local status, faseVoo = "Desligado", "Parado"
 local campanha, objetivo, alvo, destinoNPC
 local nivelCache = 1
 local dadosModulo, mainModulo, repeatModulo, privateClient
-local conexoes, origHum, colisoes = {}, {}, {}
+local conexoes, origHum, colisoes = {}, setmetatable({}, {__mode="k"}), {}
 local bodyVelocity, bodyGyro, rootControlado, humControlado, autoRotateOriginal
 local rota, ultimoInicioRota, ultimaColisao = nil, 0, 0
 local indexInimigos, pastaInimigos, ultimaIndexacao, ultimaBusca, ultimaBuscaFallback = {}, nil, 0, 0, 0
@@ -4949,7 +4949,8 @@ local VoxHaki = (function()
             "Talk_AskardBeast_HK","Defeat_GiantBoarHistory",
             "Talk_AskardSparring_HK","Spar_Askard_HK",
             "Talk_AskardArmamentEnd_HK","Talk_AskardFinalTrial_HK",
-            "Defeat_AskardHistory","Talk_AskardFinalWords_HK",
+            "Defeat_AskardHistory","Trial1_Askard_HK","Trial2_Askard_HK",
+            "Talk_AskardFinalWords_HK",
             "Talk_AskardAwakening_HK","Watch_AskardAmbush_HK",
             "Talk_AskardAuraForms_HK","Talk_AskardFarewell_HK",
             "Watch_AskardDeparture_HK"
@@ -5734,7 +5735,10 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.1 - ESTABILIDADE",
+        "GR HUB V13.2 - AUDITORIA DE MODULOS",
+        "Snapshot de referência: 2026-11-21 / Place 104067066727140",
+        "Definições exportadas: 38 Grinding, 64 Secondary, 70 History",
+        "Frutas definidas no snapshot: 19 (Forest e Operator indisponíveis)",
         "Remote Quest: "..tostring(QuestEvent~=nil),
         "Módulo Secundária: "..tostring(okSecondary),
         "Módulo Sky Hermit: "..tostring(okSky),
@@ -6330,6 +6334,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.1] Revisão de estabilidade carregada")
+print("[GR Hub V13.2] Revisão de módulos e estabilidade carregada")
 
 end)()
