@@ -1023,7 +1023,18 @@ return function(C)
             templeManager=type(lib)=="table" and lib.IsClient or nil
         end
     end)
+    local lastTempleRequire=-100
     local function templeSession()
+        if not templeManager and os.clock()-lastTempleRequire>=5 then
+            lastTempleRequire=os.clock()
+            pcall(function()
+                local path=modulePath(RS,{"Modules","Addons","MinigamesSystem"})
+                if path then
+                    local lib=require(path)
+                    templeManager=type(lib)=="table" and lib.IsClient or nil
+                end
+            end)
+        end
         local session=templeManager and templeManager.Active
         if session and session.Name=="TempleRun" then
             return true,session.Id or session.id
