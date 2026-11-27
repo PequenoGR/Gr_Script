@@ -230,11 +230,11 @@ local net=RS:WaitForChild("NetworkInstances",15)
 local remotes=net and net:WaitForChild("RemoteEvents",15)
 local QuestEvent=remotes and remotes:WaitForChild("Quests",15)
 local CombatEvent=remotes and remotes:FindFirstChild("CombatTools")
-if not QuestEvent or not QuestEvent:IsA("RemoteEvent") then
-    warn("[GR Hub] Remote de quests indisponível")
-    return
-end
+if QuestEvent and not QuestEvent:IsA("RemoteEvent") then QuestEvent=nil end
+if CombatEvent and not CombatEvent:IsA("RemoteEvent") then CombatEvent=nil end
+if not QuestEvent then warn("[GR Hub] Remote de quests indisponível; interface continuará carregando") end
 local function enviarQuest(...)
+    if not QuestEvent or not QuestEvent.Parent then return false,"Remote de quests indisponível" end
     return pcall(function(...) QuestEvent:FireServer(...) end, ...)
 end
 local function lerDados()
@@ -1753,9 +1753,11 @@ local function obterFishingHUD()
     local main=screen and screen:FindFirstChild("MainUI")
     local mini=main and main:FindFirstChild("MinigamesHUD")
     local hud=mini and mini:FindFirstChild("Fishing")
-    if hud then return hud end
+    if hud and hud:IsA("GuiObject") then return hud end
+    if os.clock()<(FeatureState.nextFishingHudScan or 0) then return nil end
+    FeatureState.nextFishingHudScan=os.clock()+1.5
     for _,obj in ipairs(pg:GetDescendants()) do
-        if obj.Name=="Fishing" and obj:FindFirstChild("GameplayElements") then return obj end
+        if obj.Name=="Fishing" and obj:IsA("GuiObject") and obj:FindFirstChild("GameplayElements") then return obj end
     end
     return nil
 end
@@ -1804,7 +1806,7 @@ end
 local function encontrarVaraPesca()
     local char=player.Character
     local mochila=player:FindFirstChildOfClass("Backpack")
-    for _,container in ipairs({char,mochila}) do
+    for _,container in ipairs({char or false,mochila or false}) do
         if container then
             for _,item in ipairs(container:GetChildren()) do
                 if item:IsA("Tool") then
@@ -1849,6 +1851,7 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubVoxMinigameStop)=="function" then pcall(env.GRHubVoxMinigameStop) end
     if type(env.GRHubRushStop)=="function" then pcall(env.GRHubRushStop) end
     env.GRHubRushStop=nil
     if type(env.GRHubSkyHermitStop)=="function" then pcall(env.GRHubSkyHermitStop) end
@@ -1902,9 +1905,11 @@ local function parar()
     if running() then env.GRHubRun=runId+1 end
 end
 env.GRHubStop=parar
-connect(QuestEvent.OnClientEvent,function(acao,nome,expira)
-    if acao=="RepeatOffered" then repeatOffer={name=nome,expires=expira} end
-end)
+if QuestEvent then
+    connect(QuestEvent.OnClientEvent,function(acao,nome,expira)
+        if acao=="RepeatOffered" then repeatOffer={name=nome,expires=expira} end
+    end)
+end
 connect(player.CharacterAdded,function(char)
     liberarVoo();limparAlvo()
     ultimaBusca=0
@@ -1960,7 +1965,10 @@ task.spawn(function()
         end)
         if not ok then
             if State.AutoFishing then FeatureState.statusPesca="Erro: "..tostring(erro) end
-            warn("[GR Hub V7.8 Fishing/Stats]",erro)
+            if os.clock()-(FeatureState.lastFishingStatsError or -100)>=4 then
+                FeatureState.lastFishingStatsError=os.clock()
+                warn("[GR Hub Fishing/Stats]",erro)
+            end
         end
         task.wait(0.15)
     end
@@ -5601,6 +5609,11 @@ local okSecondary,errSecondary=pcall(function()
         mudarAutoCastFishing=mudarAutoCastFishing
     })
 end)
+if okSecondary and (type(SecondaryQuestAuto)~="table" or type(SecondaryQuestAuto.setAuto)~="function") then
+    okSecondary=false
+    errSecondary="API do módulo inválida"
+    SecondaryQuestAuto={enabled=false,total=0,completed=0,requests=0,failures=0,setAuto=function() end}
+end
 if not okSecondary then
     SecondaryQuestAuto.status="Falha ao carregar: "..tostring(errSecondary)
     warn("[GR Secondary Quest]",errSecondary)
@@ -5650,6 +5663,11 @@ local okSky,errSky=pcall(function()
         definirFarmFruta=definirFarmFruta
     })
 end)
+if okSky and (type(SkyHermitAuto)~="table" or type(SkyHermitAuto.setAuto)~="function") then
+    okSky=false
+    errSky="API do módulo inválida"
+    SkyHermitAuto={enabled=false,total=0,completed=0,requests=0,failures=0,setAuto=function() end}
+end
 if not okSky then
     SkyHermitAuto.status="Falha ao carregar: "..tostring(errSky)
     warn("[GR Auto Sky Hermit]",errSky)
@@ -5697,6 +5715,11 @@ local okRush,errRush=pcall(function()
         definirFarmFruta=definirFarmFruta
     })
 end)
+if okRush and (type(AutoRush)~="table" or type(AutoRush.setAuto)~="function") then
+    okRush=false
+    errRush="API do módulo inválida"
+    AutoRush={enabled=false,total=0,completed=0,requests=0,failures=0,setAuto=function() end}
+end
 if not okRush then
     AutoRush.status="Falha ao carregar: "..tostring(errRush)
     warn("[GR Auto Rush]",errRush)
@@ -5711,7 +5734,11 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.0 - REVISAO GERAL",
+        "GR HUB V13.1 - ESTABILIDADE",
+        "Remote Quest: "..tostring(QuestEvent~=nil),
+        "Módulo Secundária: "..tostring(okSecondary),
+        "Módulo Sky Hermit: "..tostring(okSky),
+        "Módulo Rush: "..tostring(okRush),
         "FPS aproximado: "..tostring(FeatureState.performanceFPS),
         "Tempo médio por frame (ms): "..tostring(FeatureState.performanceFrameMS),
         "Motor de movimento ativo: "..tostring(FeatureState.movementOwner),
@@ -6145,7 +6172,7 @@ local function claimMovement(name)
                     movementConflicts+=1
                     FeatureState.movementConflicts=movementConflicts
                     if type(Hub.SetToggleState)=="function" then
-                        Hub.SetToggleState(spec.id,false,false)
+                        pcall(Hub.SetToggleState,spec.id,false,false)
                     end
                 else
                     warn("[GR Hub] Falha ao parar "..spec.name..": "..tostring(err))
@@ -6160,13 +6187,37 @@ local function claimMovement(name)
 end
 local function movementToggle(name,setter)
     return function(enabled)
+        if not running() then return end
+        local spec
+        for _,entry in ipairs(movementSwitches) do
+            if entry.name==name then spec=entry;break end
+        end
         if enabled==true then
+            if (name=="Quest" and not QuestEvent)
+                or (name=="Secundária" and not okSecondary)
+                or (name=="Rush" and not okRush)
+                or (name=="Sky Hermit" and not okSky) then
+                if spec and type(Hub.SetToggleState)=="function" then pcall(Hub.SetToggleState,spec.id,false,false) end
+                warn("[GR Hub] Função indisponível: "..name)
+                return
+            end
             claimMovement(name)
         elseif movementOwner==name then
             movementOwner="Nenhum"
             FeatureState.movementOwner="Nenhum"
         end
-        setter(enabled==true)
+        local ok,err=pcall(setter,enabled==true)
+        if not ok then
+            warn("[GR Hub] Falha no toggle "..name..": "..tostring(err))
+            if spec then
+                pcall(spec.stop)
+                if type(Hub.SetToggleState)=="function" then pcall(Hub.SetToggleState,spec.id,false,false) end
+            end
+            if movementOwner==name then
+                movementOwner="Nenhum"
+                FeatureState.movementOwner="Nenhum"
+            end
+        end
     end
 end
 Hub.AddTab("Main","Main","rbxassetid://78780430891192")
@@ -6279,6 +6330,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V11] HAKI / VOX: controle unico Auto Haki para treinos, missoes, minigames e pesca")
+print("[GR Hub V13.1] Revisão de estabilidade carregada")
 
 end)()
