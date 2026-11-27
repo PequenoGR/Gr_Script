@@ -5735,7 +5735,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.2 - AUDITORIA DE MODULOS",
+        "GR HUB V13.3 - FORGE HELPER",
         "Snapshot de referência: 2026-11-21 / Place 104067066727140",
         "Definições exportadas: 38 Grinding, 64 Secondary, 70 History",
         "Frutas definidas no snapshot: 19 (Forest e Operator indisponíveis)",
@@ -6231,7 +6231,219 @@ Hub.AddTab("Fishing","Fishing","anchor")
 Hub.AddTab("Sea","Sea","waves")
 Hub.AddTab("Ilhas","Ilhas","map-pin")
 Hub.AddTab("Raid","Raid","swords")
+Hub.AddTab("Forge","Forge","hammer")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
+
+do
+    local okForge,errForge=pcall(function()
+        local section=Hub.CreateSection("Forge","EQUIPAMENTOS E CHANCES","hammer")
+        local stats=Hub.CreateSection("Forge","RESULTADOS DA SESSÃO","history")
+        local function label(parent,height)
+            local t=Instance.new("TextLabel")
+            t.Size=UDim2.new(.92,0,0,height)
+            t.BackgroundColor3=Color3.fromRGB(28,30,35)
+            t.BorderSizePixel=0
+            t.TextColor3=Color3.fromRGB(235,235,240)
+            t.TextSize=12
+            t.Font=Enum.Font.Gotham
+            t.TextWrapped=true
+            t.TextXAlignment=Enum.TextXAlignment.Left
+            t.TextYAlignment=Enum.TextYAlignment.Center
+            local p=Instance.new("UIPadding",t)
+            p.PaddingLeft=UDim.new(0,8)
+            p.PaddingRight=UDim.new(0,8)
+            Instance.new("UICorner",t).CornerRadius=UDim.new(0,5)
+            t.Parent=parent
+            return t
+        end
+        local info=label(section,166)
+        local bar=Instance.new("Frame")
+        bar.Size=UDim2.new(.92,0,0,15)
+        bar.BackgroundColor3=Color3.fromRGB(170,48,52)
+        bar.BorderSizePixel=0
+        bar.ClipsDescendants=true
+        Instance.new("UICorner",bar).CornerRadius=UDim.new(0,4)
+        bar.Parent=section
+        local success=Instance.new("Frame")
+        success.Size=UDim2.fromScale(0,1)
+        success.BackgroundColor3=Color3.fromRGB(42,179,105)
+        success.BorderSizePixel=0
+        success.Parent=bar
+        local historyText=label(stats,156)
+        local counts={success=0,failed=0,protected=0}
+        local history={}
+        local eventStatus="Histórico indisponível"
+        local items={}
+        local selection=nil
+        local selector=nil
+        local target=9
+        local tools=mainModulo and mainModulo.Tools
+        local ti=(tools and tools.ToolsInfo) or (mainModulo and mainModulo.ToolsInfo)
+        local tu=(tools and tools.ToolsUtils) or (mainModulo and mainModulo.ToolsUtils)
+        local fu=(tools and tools.ForgeUtils) or (mainModulo and mainModulo.ForgeUtils)
+        local function module(name)
+            local shared=RS:FindFirstChild("Shared")
+            local main=shared and shared:FindFirstChild("MainModules")
+            local folder=main and main:FindFirstChild("Tools")
+            local m=folder and folder:FindFirstChild(name)
+            if m and m:IsA("ModuleScript") then
+                local ok,result=pcall(require,m)
+                if ok and type(result)=="table" then return result end
+            end
+        end
+        ti=type(ti)=="table" and ti or module("ToolsInfo")
+        tu=type(tu)=="table" and tu or module("ToolsUtils")
+        fu=type(fu)=="table" and fu or module("ForgeUtils")
+        local function count(name)
+            if not tu or type(tu.GetInventoryAmount)~="function" then return nil end
+            local ok,n=pcall(tu.GetInventoryAmount,nil,name)
+            return ok and type(n)=="number" and n or nil
+        end
+        local function itemInfo(name)
+            if not ti or type(ti.Get)~="function" then return nil end
+            local ok,result=pcall(ti.Get,ti,name)
+            if ok and type(result)=="table" then return result end
+        end
+        local function stepAt(level)
+            if fu and type(fu.GetStep)=="function" then
+                local ok,value=pcall(fu.GetStep,level)
+                if ok then return value end
+            end
+            return ti and type(ti.UpgradeSteps)=="table" and ti.UpgradeSteps[level+1] or nil
+        end
+        local function materials(step,definition)
+            if fu and type(fu.GetStepMaterials)=="function" then
+                local ok,value=pcall(fu.GetStepMaterials,step,definition)
+                if ok and type(value)=="table" then return value end
+            end
+            local multiplier=ti and ti.UpgradeRarityMultiplier
+            local factor=type(multiplier)=="table" and tonumber(multiplier[definition.Rarity]) or 1
+            local result={}
+            for name,amount in pairs(step.Materials or {}) do
+                if type(amount)=="number" then result[name]=amount*(factor or 1) end
+            end
+            return result
+        end
+        local function refreshHistory()
+            local lines={eventStatus,
+                string.format("Sucesso: %d | Falhas: %d | Protegidas: %d",counts.success,counts.failed,counts.protected)}
+            for i=1,math.min(5,#history) do table.insert(lines,history[i]) end
+            historyText.Text=table.concat(lines,"\n")
+        end
+        local function render()
+            local d=lerDados()
+            local inventory=d and d.Tools
+            if not inventory then info.Text="Inventário ainda não carregado. Atualize a lista.";success.Size=UDim2.fromScale(0,1);return end
+            local entry=selection
+            local slot=entry and inventory[entry.location]
+            local item=type(slot)=="table" and slot[entry.index] or nil
+            if not item or item.Name~=entry.name then
+                info.Text="Selecione um equipamento ou atualize a lista."
+                success.Size=UDim2.fromScale(0,1);return
+            end
+            local definition=itemInfo(item.Name)
+            if not definition then info.Text="Definição do item indisponível.";success.Size=UDim2.fromScale(0,1);return end
+            local level=tonumber(item.Upgrade) or 0
+            local step=stepAt(level)
+            local lines={item.Name.." | "..tostring(definition.Rarity or "?").." | +"..level}
+            if not step then
+                table.insert(lines,"Sem próximo upgrade disponível.")
+                success.Size=UDim2.fromScale(0,1)
+            else
+                local chance=tonumber(step.Chance) or 0
+                success.Size=UDim2.fromScale(math.clamp(chance/100,0,1),1)
+                table.insert(lines,string.format("Próximo +%d: %.0f%% verde | %.0f%% vermelho",level+1,chance,100-chance))
+                for name,needed in pairs(materials(step,definition)) do
+                    local have=count(name)
+                    table.insert(lines,name..": "..tostring(have or "?").." / "..needed)
+                end
+                table.insert(lines,"Gold necessário: "..tostring(step.Gold or 0))
+                local probability=1
+                local total=0
+                local valid=target>level
+                for n=level,target-1 do
+                    local st=stepAt(n)
+                    if not st or type(st.Chance)~="number" then valid=false;break end
+                    probability*=st.Chance/100
+                    total+=(materials(st,definition)["Forge Ember"] or 0)
+                end
+                if valid then
+                    table.insert(lines,string.format("Até +%d: mínimo %d Ember; %.4g%% sem falhar",target,total,probability*100))
+                end
+            end
+            table.insert(lines,"Proteção: "..tostring(count("Protection Charm") or "?").." normal | "..tostring(count("Untradable Protection Charm") or "?").." não negociável")
+            info.Text=table.concat(lines,"\n")
+        end
+        local function refresh()
+            local d=lerDados()
+            items={}
+            if selector and selector.Parent then selector.Parent:Destroy() end
+            selector=nil
+            selection=nil
+            for _,location in ipairs({"Equiped","Unequiped"}) do
+                local inventory=d and d.Tools and d.Tools[location]
+                if type(inventory)=="table" then
+                    for index,item in pairs(inventory) do
+                        if type(index)=="number" and type(item)=="table" and type(item.Name)=="string" then
+                            local definition=itemInfo(item.Name)
+                            if definition and definition.Upgradable==true then
+                                table.insert(items,{Name=item.Name.." +"..tostring(item.Upgrade or 0).." ["..location..":"..index.."]",location=location,index=index,name=item.Name})
+                            end
+                        end
+                    end
+                end
+            end
+            table.sort(items,function(a,b) return a.Name<b.Name end)
+            if #items>0 then
+                selection=items[1]
+                selector=Hub.CreateDropdown(section,"Equipamento",items,function(v) selection=v;render() end,false)
+            end
+            render()
+        end
+        Hub.CreateDropdown(section,"Meta",{"1","2","3","4","5","6","7","8","9"},function(v)
+            target=tonumber(v) or 9
+            render()
+        end,false)
+        target=1
+        Hub.CreateButton(section,"Atualizar equipamentos",refresh,"refresh-cw")
+        Hub.CreateButton(section,"Consultar chances e materiais",render,"eye")
+        Hub.CreateButton(stats,"Limpar histórico local",function()
+            counts.success=0;counts.failed=0;counts.protected=0
+            table.clear(history)
+            refreshHistory()
+        end,"trash-2")
+        local network=dadosModulo and dadosModulo.Network
+        if network and type(network.Require)=="function" then
+            local ok,connection=pcall(function()
+                local _,channel=network.Require("RemoteEvent","ForgeSystem")
+                if not channel or not channel.Signal then return nil end
+                return channel.Signal:Connect(function(action,result)
+                    if not running() or not historyText.Parent or action~="UpgradeResult" or type(result)~="table" then return end
+                    local outcome=result.Result
+                    local state
+                    if outcome=="Success" then counts.success+=1;state="Sucesso"
+                    elseif outcome=="Protected" then counts.failed+=1;counts.protected+=1;state="Falha protegida"
+                    elseif outcome=="Failed" or outcome=="Fail" or (type(result.NewLevel)=="number" and type(result.PreviousLevel)=="number" and result.NewLevel<=result.PreviousLevel) then counts.failed+=1;state="Falha"
+                    else return end
+                    table.insert(history,1,state.." | +"..tostring(result.PreviousLevel or "?").." → +"..tostring(result.NewLevel or "?"))
+                    if #history>25 then table.remove(history) end
+                    refreshHistory()
+                    task.delay(.8,function()
+                        if running() and info.Parent then pcall(render) end
+                    end)
+                end)
+            end)
+            if ok and connection then
+                eventStatus="Monitorando resultados reais da forja"
+                table.insert(conexoes,connection)
+            end
+        end
+        refreshHistory()
+        refresh()
+    end)
+    if not okForge then warn("[GR Hub Forge]",errForge) end
+end
+
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
 Hub.CreateToggle(farm,"Auto Farm Quest",movementToggle("Quest",definirFarm),nil,"gr_auto_farm_quest")
@@ -6334,6 +6546,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.2] Revisão de módulos e estabilidade carregada")
+print("[GR Hub V13.3] Forge Helper carregado")
 
 end)()
