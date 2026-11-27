@@ -265,6 +265,7 @@ return function(C)
     local function position(v)
         return C.posicaoDe(v)
     end
+    local npcMissUntil={}
     local function npcPosition(actor,root)
         if type(actor)~="string" or actor=="" then return nil end
         local points=interestPoints or (C.mainModulo and C.mainModulo.InterestPoints)
@@ -275,6 +276,7 @@ return function(C)
                 if pos then return pos,value end
             end
         end
+        if os.clock()<(npcMissUntil[actor] or 0) then return nil end
         local ignore=workspace:FindFirstChild("IgnoreList")
         local int=ignore and ignore:FindFirstChild("Int")
         local play=workspace:FindFirstChild("Playability")
@@ -294,6 +296,8 @@ return function(C)
                 end
             end
         end
+        if not found then npcMissUntil[actor]=os.clock()+2.5
+        else npcMissUntil[actor]=nil end
         return found,model
     end
     local function converseInfo(id,root,preferredActor)
@@ -1039,7 +1043,7 @@ return function(C)
             R.status=R.phantomStatus
             return true
         end
-        if remaining<=8 then
+        if remaining<=4 then
             R.phantomStatus="Fim válido do corredor; aguardando TempleRun End"
             R.status=R.phantomStatus
             local id=templeActiveId()
