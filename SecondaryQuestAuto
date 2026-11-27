@@ -1015,18 +1015,20 @@ return function(C)
     local function phantomInsideTarget(part)
         return part.Position+Vector3.new(0,part.Size.Y*.5+2.65,0)
     end
-    local function templeActiveId()
+    local templeManager
+    pcall(function()
         local path=modulePath(RS,{"Modules","Addons","MinigamesSystem"})
-        if not path then return nil end
-        local ok,lib=pcall(require,path)
-        if ok and type(lib)=="table" then
-            local client=lib.IsClient
-            local session=client and client.Active
-            if session and session.Name=="TempleRun" then
-                return session.Id or session.id
-            end
+        if path then
+            local lib=require(path)
+            templeManager=type(lib)=="table" and lib.IsClient or nil
         end
-        return nil
+    end)
+    local function templeSession()
+        local session=templeManager and templeManager.Active
+        if session and session.Name=="TempleRun" then
+            return true,session.Id or session.id
+        end
+        return false,nil
     end
     local function phantomPassage()
         local char,root,hum,ok=alive()
@@ -1043,9 +1045,9 @@ return function(C)
             R.status=R.phantomStatus
             return true
         end
-        local activeId=templeActiveId()
+        local sessionActive,activeId=templeSession()
         R.phantomActiveId=activeId
-        if not activeId then
+        if not sessionActive then
             local folder=phantomQuestParts()
             local marker=folder and folder:FindFirstChild("ActivateMinigamePart")
             if not marker or not marker:IsA("BasePart") then
@@ -1073,14 +1075,14 @@ return function(C)
         if remaining<=4 then
             R.phantomStatus="Fim válido do corredor; aguardando TempleRun End"
             R.status=R.phantomStatus
-            local id=templeActiveId()
-            R.phantomActiveId=id
-            if id then
-                once("SQTempleRunEnd",2.7,function()
-                    R.phantomAttempts+=1
-                    server("MinigamesService","TempleRun",{GameAction="End",id=id})
-                end)
-            end
+            once("SQTempleRunEnd",2.7,function()
+                R.phantomAttempts+=1
+                if server("MinigamesService","TempleRun",
+                    {GameAction="End",id=activeId}) then
+                    R.phantomStatus="TempleRun End solicitado; aguardando progresso"
+                    R.status=R.phantomStatus
+                end
+            end)
             return true
         end
         local direction=Vector3.new(finish.X-root.Position.X,
