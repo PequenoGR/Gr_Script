@@ -1019,7 +1019,7 @@ return function(C)
             local client=lib.IsClient
             local session=client and client.Active
             if session and session.Name=="TempleRun" then
-                return session.Id
+                return session.Id or session.id
             end
         end
         return nil
@@ -1027,7 +1027,8 @@ return function(C)
     local function phantomPassage()
         local char,root,hum,ok=alive()
         if not ok then return true end
-        local finish=Vector3.new(-8313.688,-1205.046,14298.82)
+        -- O TempleRun original só envia End após ultrapassar 14319.071 + 8 studs
+        local finish=Vector3.new(-8313.988,-1200.667,14332.5)
         local start=Vector3.new(-8313.673,-1205.046,12929.421)
         local remaining=(root.Position-finish).Magnitude
         R.phantomRunDistance=math.floor(remaining)
@@ -1038,8 +1039,8 @@ return function(C)
             R.status=R.phantomStatus
             return true
         end
-        if remaining<=18 then
-            R.phantomStatus="Fim do corredor alcançado; aguardando TempleRun End"
+        if remaining<=8 then
+            R.phantomStatus="Fim válido do corredor; aguardando TempleRun End"
             R.status=R.phantomStatus
             local id=templeActiveId()
             R.phantomActiveId=id
