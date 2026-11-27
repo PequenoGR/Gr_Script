@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, AutoForge=false, IslandESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, AutoForge=false, AutoMaterials=false, IslandESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -805,7 +805,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoForge or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoForge or State.AutoMaterials or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1821,7 +1821,7 @@ local function encontrarVaraPesca()
     return nil
 end
 local function atualizarLancamentoPesca()
-    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or State.AutoRaid or State.AutoForge or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
+    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or State.AutoRaid or State.AutoForge or State.AutoMaterials or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
     if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible then return end
     if os.clock()<FeatureState.bloquearAtePesca or os.clock()-FeatureState.ultimoLancamentoPesca<8 then return end
     local _,root,hum=character()
@@ -1851,6 +1851,7 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubMaterialsStop)=="function" then pcall(env.GRHubMaterialsStop);env.GRHubMaterialsStop=nil end
     if type(env.GRHubForgeStop)=="function" then pcall(env.GRHubForgeStop);env.GRHubForgeStop=nil end
     if type(env.GRHubVoxMinigameStop)=="function" then pcall(env.GRHubVoxMinigameStop) end
     if type(env.GRHubRushStop)=="function" then pcall(env.GRHubRushStop) end
@@ -1928,7 +1929,7 @@ connect(RunService.Heartbeat,function(dt)
             FeatureState.performanceFrameMS=math.floor(performanceAverage*1000+.5)
         end
     end
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoForge or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoForge or State.AutoMaterials or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -5736,7 +5737,10 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.6 - REVISAO DE ESTABILIDADE",
+        "GR HUB V13.7 - AUTO MATERIALS",
+        "Materials ativo: "..tostring(State.AutoMaterials),
+        "Materials status: "..tostring(FeatureState.materialsStatus),
+        "Materials alvo: "..tostring(FeatureState.materialsTarget),
         "Forge ativo: "..tostring(State.AutoForge),
         "Forge status: "..tostring(FeatureState.forgeStatus),
         "Forge tentativas: "..tostring(FeatureState.forgeAttempts).."/"..tostring(FeatureState.forgeLimit),
@@ -6777,6 +6781,322 @@ do
     if not okForge then warn("[GR Hub Forge]",errForge) end
 end
 
+
+do
+    local okMaterials,errMaterials=pcall(function()
+        local section=Hub.CreateSection("Main","AUTO MATERIALS","package")
+        local label=Instance.new("TextLabel")
+        label.Size=UDim2.new(.92,0,0,116)
+        label.TextWrapped=true
+        label.TextColor3=Color3.fromRGB(235,235,240)
+        label.BackgroundColor3=Color3.fromRGB(28,30,35)
+        label.BorderSizePixel=0
+        label.TextSize=12
+        label.Font=Enum.Font.Gotham
+        label.Parent=section
+        Instance.new("UICorner",label).CornerRadius=UDim.new(0,5)
+        local info,selected,sources,allNames,choices={},{},{},{},{}
+        local enabled=false
+        local targetAmount=10
+        local currentName,currentSource,currentEnemy
+        local nextChoose=0
+        local lastAttack=0
+        local lastProgress=0
+        local lastQuantity=0
+        local lastScan=0
+        local lastError=0
+        local started=0
+        local skipped={}
+        local progressSummary=""
+        local materialPicker
+        local toggleId="gr_auto_materials"
+        local function status(value)
+            FeatureState.materialsStatus=tostring(value)
+            FeatureState.materialsTarget=currentName
+            if label.Parent then label.Text=tostring(value).."\n"..progressSummary end
+        end
+        local function resetTarget()
+            currentName,currentSource,currentEnemy=nil,nil,nil
+            nextChoose=0
+            if rota and type(rota.chave)=="string" and rota.chave:sub(1,9)=="Materials" then liberarVoo() end
+        end
+        local function stop(reason)
+            enabled=false
+            State.AutoMaterials=false
+            resetTarget()
+            if movementOwner=="Materials" then movementOwner="Nenhum";FeatureState.movementOwner="Nenhum" end
+            if type(Hub.SetToggleState)=="function" then pcall(Hub.SetToggleState,toggleId,false,false) end
+            status(reason or "Desligado")
+        end
+        env.GRHubMaterialsStop=function() stop("Desligado") end
+        table.insert(movementSwitches,{name="Materials",id=toggleId,active=function() return enabled end,stop=function() stop("Pausado por outra atividade") end})
+        local function loadModule(folder,name)
+            local m=folder and folder:FindFirstChild(name)
+            if m and m:IsA("ModuleScript") then
+                local ok,result=pcall(require,m)
+                if ok and type(result)=="table" then return result end
+            end
+        end
+        local shared=RS:FindFirstChild("Shared")
+        local main=shared and shared:FindFirstChild("MainModules")
+        local toolFolder=main and main:FindFirstChild("Tools")
+        local enemyFolder=main and main:FindFirstChild("EnemysUtils")
+        local ti=loadModule(toolFolder,"ToolsInfo")
+        local bestiary=loadModule(enemyFolder,"BestiaryUtils")
+        local function quantity(name,d)
+            local inventory=d and d.Tools and d.Tools.Unequiped
+            if type(inventory)~="table" then return nil end
+            local count=0
+            for _,item in pairs(inventory) do
+                if type(item)=="table" and item.Name==name then count+=tonumber(item.Quantity) or 1 end
+            end
+            return count
+        end
+        local function catalog()
+            table.clear(info);table.clear(allNames);table.clear(sources);table.clear(choices)
+            if ti and type(ti.Infos)=="table" then
+                for name,definition in pairs(ti.Infos) do
+                    if type(name)=="string" and type(definition)=="table" and definition.ToolType=="Item"
+                        and (definition.SubType=="Material" or definition.SubType=="Resources") then
+                        info[name]=definition
+                        table.insert(allNames,name)
+                        sources[name]={}
+                    end
+                end
+            end
+            table.sort(allNames)
+            if bestiary and type(bestiary.GetEntries)=="function" and type(bestiary.GetDrops)=="function" then
+                local ok,entries=pcall(bestiary.GetEntries)
+                if ok and type(entries)=="table" then
+                    for _,entry in ipairs(entries) do
+                        local good,drops=pcall(bestiary.GetDrops,entry)
+                        if good and type(drops)=="table" then
+                            for name,drop in pairs(drops) do
+                                if info[name] and type(drop)=="table" then
+                                    local ch=tonumber(tostring(drop.Chance or ""):match("[%d%.]+")) or 0
+                                    table.insert(sources[name],{entry=entry,enemy=entry.EnemyName,category=entry.Category,island=entry.Island,level=tonumber(entry.Level) or 0,chance=ch})
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            for _,name in ipairs(allNames) do
+                local direct=false
+                for _,source in ipairs(sources[name]) do
+                    if source.category=="Grinding" or source.category=="Wanted" then direct=true;break end
+                end
+                if direct then table.insert(choices,name) end
+            end
+        end
+        local function showCatalog()
+            local d=lerDados()
+            local lines={}
+            for _,name in ipairs(allNames) do
+                local sourceLines={}
+                for _,source in ipairs(sources[name]) do
+                    if #sourceLines>=4 then break end
+                    table.insert(sourceLines,tostring(source.enemy).." ["..tostring(source.category).."] "..source.chance.."%")
+                end
+                local recipe=info[name].Recipe
+                if #sourceLines==0 and type(recipe)=="table" then
+                    for ingredient,amount in pairs(recipe.Materials or {}) do
+                        table.insert(sourceLines,tostring(amount).."x "..tostring(ingredient))
+                    end
+                    if #sourceLines>0 then table.insert(sourceLines,1,"Receita") end
+                end
+                table.insert(lines,name.." ("..tostring(quantity(name,d) or "?")..") — "..(#sourceLines>0 and table.concat(sourceLines,", ") or "Fonte não confirmada"))
+            end
+            local result=table.concat(lines,"\n")
+            if type(setclipboard)=="function" then
+                local ok=pcall(setclipboard,result)
+                if ok then status("Catálogo copiado: "..#allNames.." materiais e recursos");return end
+            end
+            if type(writefile)=="function" then
+                local ok=pcall(writefile,"GRHub_Materials.txt",result)
+                if ok then status("Catálogo salvo em GRHub_Materials.txt");return end
+            end
+            status("Clipboard e salvamento indisponíveis")
+        end
+        local function rebuildPicker()
+            if enabled then stop("Catálogo atualizado; selecione novamente") end
+            catalog()
+            selected={}
+            if materialPicker and materialPicker.Parent then materialPicker:Destroy() end
+            materialPicker=nil
+            if #choices>0 and type(Hub.CreateMultiDropdown)=="function" then
+                materialPicker=Hub.CreateMultiDropdown(section,"Materiais para farmar",choices,function(values)
+                    if enabled then stop("Seleção alterada; ligue novamente") end
+                    selected=type(values)=="table" and values or {}
+                end,{},false)
+            elseif #choices>0 then
+                local b=Hub.CreateDropdown(section,"Material",choices,function(value)
+                    if enabled then stop("Seleção alterada; ligue novamente") end
+                    selected={value}
+                end,false)
+                materialPicker=b and b.Parent
+                selected={choices[1]}
+            end
+            progressSummary=string.format("Catálogo: %d | Drops diretos: %d\nSelecione os materiais ou Todos.",#allNames,#choices)
+            status(#choices>0 and "Desligado" or "Bestiário ainda não carregado; atualize a lista")
+        end
+        local function exactEnemy(model,name)
+            if not model or not model:IsA("Model") or not model.Parent or Players:GetPlayerFromCharacter(model) then return false end
+            if model.Name:lower():find("history",1,true) then return false end
+            local wanted=normalizar(name)
+            for _,value in pairs({model.Name,model:GetAttribute("OriginalName"),model:GetAttribute("EnemyName"),model:GetAttribute("AlternativeName"),model:GetAttribute("DisplayName")}) do
+                if normalizar(tostring(value):gsub("[_%- ]?%d+$",""))==wanted then return true end
+            end
+            return false
+        end
+        local function findTarget(source,root)
+            reindexar()
+            local best,dist=nil,math.huge
+            for _,model in ipairs(indexInimigos) do
+                if exactEnemy(model,source.enemy) and valido(model) then
+                    local er=rootInimigo(model)
+                    if er and er:IsA("BasePart") then
+                        local d=(root.Position-er.Position).Magnitude
+                        if d<dist then best=model;dist=d end
+                    end
+                end
+            end
+            return best
+        end
+        local function choose(d,root)
+            local level=lerNivel(d)
+            local localName=normalizar(localAtual())
+            local completed=0
+            local waiting={}
+            local bestName,bestSource,bestScore=nil,nil,-math.huge
+            for _,name in ipairs(selected) do
+                local n=quantity(name,d)
+                if n and n>=targetAmount then completed+=1
+                elseif not skipped[name] then
+                    local viable=false
+                    for _,source in ipairs(sources[name] or {}) do
+                        if source.level<=level and type(source.enemy)=="string" and (source.category=="Grinding" or source.category=="Wanted") then
+                            local enemy=findTarget(source,root)
+                            if source.category=="Grinding" or enemy then
+                                viable=true
+                                local score=source.chance+(enemy and 35 or 0)+(normalizar(source.island)==localName and 20 or 0)
+                                if enemy then
+                                    local er=rootInimigo(enemy)
+                                    if er then score-=math.min((root.Position-er.Position).Magnitude/200,20) end
+                                end
+                                if score>bestScore then bestName,bestSource,bestScore=name,source,score end
+                            end
+                        end
+                    end
+                    if not viable then table.insert(waiting,name) end
+                end
+            end
+            progressSummary=string.format("Metas: %d/%d | Sem fonte disponível: %d",completed,#selected,#waiting)
+            if bestName then
+                currentName,currentSource,currentEnemy=bestName,bestSource,nil
+                lastQuantity=quantity(bestName,d) or 0
+                lastProgress=os.clock()
+                nextChoose=os.clock()+2
+                return true
+            end
+            stop(completed==#selected and "Todas as metas selecionadas atingidas" or "Sem fonte disponível ou nível insuficiente")
+            return false
+        end
+        local function tick()
+            if not enabled then return end
+            local _,root,hum=character()
+            if not root or not hum or hum.Health<=0 or emTransicao() then
+                resetTarget();status("Aguardando personagem");return
+            end
+            if State.AutoFishing or FeatureState.pescandoAgora or FeatureState.islandTraveling then stop("Outra atividade está usando o personagem");return end
+            if os.clock()-started>1800 then stop("Limite de sessão de 30 minutos atingido");return end
+            local d=lerDados()
+            if not d or type(d.Tools)~="table" then status("Aguardando inventário");return end
+            if not currentName then
+                if not choose(d,root) then return end
+            end
+            local n=quantity(currentName,d)
+            if not n then status("Inventário indisponível");return end
+            if n>=targetAmount then resetTarget();return end
+            if n>lastQuantity then lastQuantity=n;lastProgress=os.clock() end
+            if os.clock()-lastProgress>180 then
+                skipped[currentName]=true
+                resetTarget()
+                status("Material sem progresso; buscando próximo")
+                return
+            end
+            progressSummary=currentName..": "..n.."/"..targetAmount.." | "..tostring(currentSource.enemy).." | "..tostring(currentSource.chance).."%"
+            if not currentEnemy or not exactEnemy(currentEnemy,currentSource.enemy) or not valido(currentEnemy) then
+                currentEnemy=nil
+                if os.clock()-lastScan>=.5 then lastScan=os.clock();currentEnemy=findTarget(currentSource,root) end
+            end
+            if currentEnemy then
+                local er=rootInimigo(currentEnemy)
+                if not er or not er:IsA("BasePart") then currentEnemy=nil;return end
+                definirDestino(er.Position+Vector3.new(0,math.clamp(alturaInimigo,3,9),0),"MaterialsEnemy")
+                if (root.Position-er.Position).Magnitude<=14 and os.clock()-lastAttack>=.12 then
+                    lastAttack=os.clock()
+                    local tool=equiparArma()
+                    if tool then
+                        pcall(function() tool:Activate() end)
+                        status("Farmando "..currentName)
+                    else status("Equipe uma arma do tipo selecionado") end
+                else status("Aproximando do inimigo") end
+            elseif currentSource.category=="Grinding" then
+                local point=pontoGrupoInimigo(currentSource.enemy,root)
+                if not point and bestiary and type(bestiary.GetSpawnArea)=="function" then
+                    local ok,p=pcall(bestiary.GetSpawnArea,currentSource.entry)
+                    if ok and typeof(p)=="Vector3" then point=p end
+                end
+                if typeof(point)=="Vector3" and (root.Position-point).Magnitude>12 then
+                    definirDestino(point+Vector3.new(0,5,0),"MaterialsSpawn")
+                    status("Viajando ao grupo de inimigos")
+                else
+                    if rota and type(rota.chave)=="string" and rota.chave:sub(1,9)=="Materials" then liberarVoo() end
+                    status(point and "Aguardando respawn" or "Spawn não carregado")
+                end
+            else
+                resetTarget()
+                status("Boss não carregado; procurando outra fonte")
+            end
+        end
+        Hub.CreateDropdown(section,"Quantidade por material",{"10","25","50","99"},function(v)
+            if enabled then stop("Meta alterada; ligue novamente") end
+            targetAmount=tonumber(v) or 10
+        end,false)
+        Hub.CreateButton(section,"Atualizar materiais",rebuildPicker,"refresh-cw")
+        Hub.CreateButton(section,"Copiar catálogo completo e fontes",showCatalog,"copy")
+        Hub.CreateToggle(section,"Auto Materials",function(value)
+            if not value then stop("Desligado");return end
+            if not running() or #selected==0 then stop("Selecione ao menos um material");return end
+            if State.AutoFishing and not State.AutoHaki and not State.AutoSecondary then stop("Desative a pesca primeiro");return end
+            claimMovement("Materials")
+            if State.AutoFishing then stop("Pesca ainda ativa");return end
+            enabled=true
+            State.AutoMaterials=true
+            started=os.clock()
+            table.clear(skipped)
+            resetTarget()
+            status("Iniciando farm de materiais")
+        end,"package",toggleId)
+        rebuildPicker()
+        task.spawn(function()
+            while running() and label.Parent do
+                if enabled then
+                    local ok,err=pcall(tick)
+                    if not ok then
+                        if os.clock()-lastError>3 then lastError=os.clock();warn("[GR Hub Materials]",err) end
+                        stop("Erro: "..tostring(err))
+                    end
+                end
+                task.wait(enabled and .2 or 1)
+            end
+            if enabled then stop("Desligado") end
+        end)
+    end)
+    if not okMaterials then warn("[GR Hub Materials]",errMaterials) end
+end
+
 local farm=Hub.CreateSection("Main","AUTO FARM")
 Hub.CreateDropdown(farm,"Selecionar Tool",TOOL_TYPES,selecionarTipoTool)
 Hub.CreateToggle(farm,"Auto Farm Quest",movementToggle("Quest",definirFarm),nil,"gr_auto_farm_quest")
@@ -6885,6 +7205,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.6] Revisão de estabilidade carregada")
+print("[GR Hub V13.7] Auto Materials carregado")
 
 end)()
