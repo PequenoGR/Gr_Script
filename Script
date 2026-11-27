@@ -805,7 +805,7 @@ local function definirDestino(destino,chave)
 end
 local function atualizarVoo(dt)
     if os.clock()<(FeatureState.islandUntil or 0) and not FeatureState.islandTraveling then return end
-    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) or not running() then return end
+    if not (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoForge or FeatureState.islandTraveling) or not running() then return end
     local r=rota
     if not r or typeof(r.destino)~="Vector3" then return end
     if emTransicao() then liberarVoo();return end
@@ -1851,6 +1851,7 @@ local function atualizarLancamentoPesca()
     end
 end
 local function parar()
+    if type(env.GRHubForgeStop)=="function" then pcall(env.GRHubForgeStop);env.GRHubForgeStop=nil end
     if type(env.GRHubVoxMinigameStop)=="function" then pcall(env.GRHubVoxMinigameStop) end
     if type(env.GRHubRushStop)=="function" then pcall(env.GRHubRushStop) end
     env.GRHubRushStop=nil
@@ -1927,7 +1928,7 @@ connect(RunService.Heartbeat,function(dt)
             FeatureState.performanceFrameMS=math.floor(performanceAverage*1000+.5)
         end
     end
-    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) and running() then
+    if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoForge or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
             if os.clock()-ultimoErroFly>2 then warn("[GR Hub] Erro Fly:",err);ultimoErroFly=os.clock() end
@@ -5735,7 +5736,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.4 - AUTO FORGE",
+        "GR HUB V13.5 - AUTO FORGE COMPLETO",
         "Snapshot de referência: 2026-11-21 / Place 104067066727140",
         "Definições exportadas: 38 Grinding, 64 Secondary, 70 History",
         "Frutas definidas no snapshot: 19 (Forest e Operator indisponíveis)",
@@ -6286,6 +6287,13 @@ do
         local status="Desligado"
         local dataModule=nil
         local eventConnected=false
+        local travelStarted=0
+        local openRequested=0
+        local smithCache=nil
+        local smithScanAt=0
+        local usedIslandFallback=false
+        local ownsIslandTrip=false
+        local openedOnce=false
         local statusLabel=label(section,55)
         local function setStatus(value)
             status=value
@@ -6293,8 +6301,23 @@ do
         end
         local function stop(value)
             autoEnabled=false
+            State.AutoForge=false
+            if rota and rota.chave=="ForgeTravel" then liberarVoo() end
+            if ownsIslandTrip then
+                if FeatureState.islandTraveling then IslandTeleport.stop() end
+                ownsIslandTrip=false
+            end
+            if movementOwner=="Forge" then
+                movementOwner="Nenhum"
+                FeatureState.movementOwner="Nenhum"
+            end
             setStatus(value or "Desligado")
         end
+        env.GRHubForgeStop=function() stop("Desligado") end
+        table.insert(movementSwitches,{
+            name="Forge",id="gr_auto_forge",active=function() return autoEnabled end,
+            stop=function() stop("Pausado por outra atividade") end
+        })
         local tools=mainModulo and mainModulo.Tools
         local ti=(tools and tools.ToolsInfo) or (mainModulo and mainModulo.ToolsInfo)
         local tu=(tools and tools.ToolsUtils) or (mainModulo and mainModulo.ToolsUtils)
@@ -6323,6 +6346,126 @@ do
                 local ok,mod=pcall(require,m)
                 if ok and type(mod)=="table" then dataModule=mod end
             end
+        end
+        local smithNames={
+            "Circus Town Blacksmith","Golden Dunes Blacksmith","Central Town Blacksmith",
+            "Frost Island Blacksmith","Rustfall Blacksmith","Valoria Island Blacksmith",
+            "Windhaven Blacksmith","Volcano Island Blacksmith","Kraken's Rest Blacksmith"
+        }
+        local function nearestSmith(root)
+            local now=os.clock()
+            if now<smithScanAt then return smithCache end
+            smithScanAt=now+2
+            local best,dist=nil,math.huge
+            local function consider(name,p,model)
+                if typeof(p)~="Vector3" then return end
+                local distance=(root.Position-p).Magnitude
+                if distance<dist then
+                    best={name=name,point=p,model=model};dist=distance
+                end
+            end
+            local ignore=workspace:FindFirstChild("IgnoreList")
+            local inside=ignore and ignore:FindFirstChild("Int")
+            local npcs=inside and inside:FindFirstChild("NPCs")
+            local shops=npcs and npcs:FindFirstChild("Shops")
+            if shops then
+                for _,obj in ipairs(shops:GetDescendants()) do
+                    if obj:IsA("Model") and type(obj:GetAttribute("ForgeLevel"))=="number" then
+                        consider(obj.Name,obj:GetPivot().Position,obj)
+                    end
+                end
+            end
+            local anchors=RS:FindFirstChild("NpcAnchors")
+            local points=mainModulo and mainModulo.InterestPoints
+            for _,name in ipairs(smithNames) do
+                local anchor=anchors and anchors:FindFirstChild(name)
+                consider(name,posicaoDe(anchor),nil)
+                if points and type(points.Get)=="function" then
+                    local ok,obj=pcall(points.Get,points,"Character_"..name)
+                    if ok then consider(name,posicaoDe(obj),nil) end
+                end
+            end
+            smithCache=best
+            return best
+        end
+        local function nearestSmithIsland(root)
+            local map=workspace:FindFirstChild("Map")
+            local areas=map and map:FindFirstChild("Areas")
+            if not areas then return nil end
+            local nearest,distance=nil,math.huge
+            for _,name in ipairs(smithNames) do
+                local island=name:gsub(" Blacksmith$","")
+                local area=areas:FindFirstChild(island)
+                local center=area and area:GetAttribute("MapCenter")
+                if typeof(center)=="Vector3" then
+                    local d=(root.Position-center).Magnitude
+                    if d<distance then nearest=island;distance=d end
+                end
+            end
+            return nearest
+        end
+        local function prepareForge(root)
+            if not fu or type(fu.FindSmith)~="function" then
+                stop("ForgeUtils indisponível");return false
+            end
+            if os.clock()-travelStarted>600 then
+                stop("Tempo limite procurando ou abrindo a forja");return false
+            end
+            if ownsIslandTrip and FeatureState.islandTraveling then
+                setStatus("Viajando para ilha com ferreiro");return false
+            elseif ownsIslandTrip then
+                ownsIslandTrip=false
+                smithScanAt=0
+            end
+            local smith=fu.FindSmith(root.Position)
+            if smith then
+                if rota and rota.chave=="ForgeTravel" then liberarVoo() end
+                if type(dataModule.ForgeLevel)=="number" then
+                    openedOnce=true
+                    return true
+                end
+                if openRequested>0 then
+                    if os.clock()-openRequested>12 then
+                        stop("Ferreiro encontrado, mas a forja não abriu")
+                    else setStatus("Aguardando abertura da forja") end
+                    return false
+                end
+                local network=dadosModulo and dadosModulo.Network
+                if not network or type(network.FireServer)~="function" then stop("Network indisponível");return false end
+                local converse=smith.Name=="Valoria Island Blacksmith" and "ValoriaBlacksmith" or "Blacksmith"
+                openRequested=os.clock()
+                setStatus("Abrindo forja: "..smith.Name)
+                network:FireServer("Elysium_Converse",converse)
+                return false
+            end
+            openRequested=0
+            if openedOnce then stop("Você saiu do alcance do ferreiro");return false end
+            local found=nearestSmith(root)
+            if found then
+                local point=found.model and found.model.Parent and found.model:GetPivot().Position or found.point
+                local distance=(root.Position-point).Magnitude
+                if distance<=12 then
+                    if rota and rota.chave=="ForgeTravel" then liberarVoo() end
+                    setStatus("Aguardando NPC carregar: "..found.name)
+                else
+                    definirDestino(point+Vector3.new(0,3,0),"ForgeTravel")
+                    setStatus("Indo a "..found.name.." ("..math.floor(distance).." studs)")
+                end
+                return false
+            end
+            if not usedIslandFallback then
+                local island=nearestSmithIsland(root)
+                if island then
+                    usedIslandFallback=true
+                    IslandTeleport.choose(island)
+                    IslandTeleport.go()
+                    ownsIslandTrip=FeatureState.islandTraveling==true
+                    if ownsIslandTrip then setStatus("Procurando ferreiro em "..island);return false end
+                end
+            end
+            if os.clock()-travelStarted>35 then stop("Ferreiro não carregado; tente em uma ilha com forja")
+            else setStatus("Buscando ferreiros carregados") end
+            return false
         end
         local function count(name)
             if not tu or type(tu.GetInventoryAmount)~="function" then return nil end
@@ -6457,11 +6600,27 @@ do
             if not eventConnected or not dataModule or type(dataModule.Upgrade)~="function" or type(dataModule.GetUpgradeBlock)~="function" then
                 setStatus("API original da forja indisponível");return
             end
-            if type(dataModule.ForgeLevel)~="number" then setStatus("Abra a forja original no ferreiro");return end
+            if State.AutoFishing and not State.AutoHaki and not State.AutoSecondary then
+                setStatus("Desative Auto Fishing antes de iniciar");return
+            end
+            local d=lerDados()
+            local slot=d and d.Tools and d.Tools[selection.location]
+            local item=slot and slot[selection.index]
+            if not item or item.Name~=selection.name then setStatus("Equipamento mudou; atualize a lista");return end
+            if (tonumber(item.Upgrade) or 0)>=target then setStatus("Equipamento já está na meta");return end
+            claimMovement("Forge")
             attemptCount=0
             autoEnabled=true
+            State.AutoForge=true
+            travelStarted=os.clock()
+            openRequested=0
+            openedOnce=false
+            smithCache=nil
+            smithScanAt=0
+            usedIslandFallback=false
+            ownsIslandTrip=false
             nextAttempt=os.clock()
-            setStatus("Iniciando")
+            setStatus("Procurando ferreiro")
         end,"play")
         Hub.CreateButton(section,"Parar Auto Forge",function() stop(pending and "Parado; aguardando resultado enviado" or "Desligado") end,"square")
         Hub.CreateButton(section,"Atualizar equipamentos",refresh,"refresh-cw")
@@ -6478,7 +6637,10 @@ do
                 if not channel or not channel.Signal then return nil end
                 return channel.Signal:Connect(function(action,result)
                     if not running() or not historyText.Parent then return end
-                    if action=="Close" then stop("Forja fechada");return end
+                    if action=="Close" then
+                        if autoEnabled and openedOnce then stop("Forja fechada") end
+                        return
+                    end
                     if action~="UpgradeResult" then return end
                     if type(result)~="table" then
                         if pending then pending=nil;stop("Servidor recusou a tentativa") end
@@ -6543,13 +6705,14 @@ do
                     end
                     if not autoEnabled or os.clock()<nextAttempt then return end
                     if attemptCount>=attemptLimit then stop("Limite de tentativas atingido");return end
-                    if not selection or not dataModule or type(dataModule.ForgeLevel)~="number" then stop("Abra a forja e selecione o equipamento");return end
-                    if State.AutoFarmQuest or State.AutoFarmFruit or State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoFishing or FeatureState.islandTraveling then
-                        stop("Desative as outras atividades antes de forjar");return
+                    if not selection or not dataModule then stop("Selecione o equipamento");return end
+                    if State.AutoFarmQuest or State.AutoFarmFruit or State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoFishing or (FeatureState.islandTraveling and not ownsIslandTrip) then
+                        stop("Outra atividade está usando o personagem");return
                     end
                     local _,root,hum=character()
-                    if not root or not hum or hum.Health<=0 or emTransicao() then stop("Personagem indisponível");return end
-                    if not fu or type(fu.FindSmith)~="function" or not fu.FindSmith(root.Position) then stop("Fique perto do ferreiro");return end
+                    if not root or not hum or hum.Health<=0 then stop("Personagem indisponível");return end
+                    if emTransicao() then setStatus("Aguardando transição");return end
+                    if not prepareForge(root) then return end
                     local d=lerDados()
                     local slot=d and d.Tools and d.Tools[selection.location]
                     local item=slot and slot[selection.index]
@@ -6585,6 +6748,7 @@ do
                 end
                 task.wait((autoEnabled or pending) and .25 or .75)
             end
+            stop("Desligado")
         end)
     end)
     if not okForge then warn("[GR Hub Forge]",errForge) end
@@ -6692,6 +6856,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.4] Auto Forge carregado")
+print("[GR Hub V13.5] Auto Forge completo carregado")
 
 end)()
