@@ -5735,7 +5735,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.3 - FORGE HELPER",
+        "GR HUB V13.4 - AUTO FORGE",
         "Snapshot de referência: 2026-11-21 / Place 104067066727140",
         "Definições exportadas: 38 Grinding, 64 Secondary, 70 History",
         "Frutas definidas no snapshot: 19 (Forest e Operator indisponíveis)",
@@ -6231,13 +6231,12 @@ Hub.AddTab("Fishing","Fishing","anchor")
 Hub.AddTab("Sea","Sea","waves")
 Hub.AddTab("Ilhas","Ilhas","map-pin")
 Hub.AddTab("Raid","Raid","swords")
-Hub.AddTab("Forge","Forge","hammer")
 Hub.AddTab("Config","Config","rbxassetid://6031280882")
 
 do
     local okForge,errForge=pcall(function()
-        local section=Hub.CreateSection("Forge","EQUIPAMENTOS E CHANCES","hammer")
-        local stats=Hub.CreateSection("Forge","RESULTADOS DA SESSÃO","history")
+        local section=Hub.CreateSection("Main","AUTO FORGE","hammer")
+        local stats=Hub.CreateSection("Main","FORGE - HISTÓRICO","history")
         local function label(parent,height)
             local t=Instance.new("TextLabel")
             t.Size=UDim2.new(.92,0,0,height)
@@ -6276,7 +6275,26 @@ do
         local items={}
         local selection=nil
         local selector=nil
-        local target=9
+        local target=1
+        local autoEnabled=false
+        local pending=nil
+        local uncertain=false
+        local attemptCount=0
+        local attemptLimit=5
+        local protect=true
+        local nextAttempt=0
+        local status="Desligado"
+        local dataModule=nil
+        local eventConnected=false
+        local statusLabel=label(section,55)
+        local function setStatus(value)
+            status=value
+            statusLabel.Text="Auto Forge: "..value.." | "..attemptCount.."/"..attemptLimit
+        end
+        local function stop(value)
+            autoEnabled=false
+            setStatus(value or "Desligado")
+        end
         local tools=mainModulo and mainModulo.Tools
         local ti=(tools and tools.ToolsInfo) or (mainModulo and mainModulo.ToolsInfo)
         local tu=(tools and tools.ToolsUtils) or (mainModulo and mainModulo.ToolsUtils)
@@ -6294,6 +6312,18 @@ do
         ti=type(ti)=="table" and ti or module("ToolsInfo")
         tu=type(tu)=="table" and tu or module("ToolsUtils")
         fu=type(fu)=="table" and fu or module("ForgeUtils")
+        do
+            local folder=RS:FindFirstChild("Modules")
+            folder=folder and folder:FindFirstChild("Addons")
+            folder=folder and folder:FindFirstChild("ForgeSystem")
+            folder=folder and folder:FindFirstChild("ForgeSystem Client")
+            folder=folder and folder:FindFirstChild("ForgeMenu")
+            local m=folder and folder:FindFirstChild("Data")
+            if m and m:IsA("ModuleScript") then
+                local ok,mod=pcall(require,m)
+                if ok and type(mod)=="table" then dataModule=mod end
+            end
+        end
         local function count(name)
             if not tu or type(tu.GetInventoryAmount)~="function" then return nil end
             local ok,n=pcall(tu.GetInventoryAmount,nil,name)
@@ -6375,6 +6405,7 @@ do
             info.Text=table.concat(lines,"\n")
         end
         local function refresh()
+            if autoEnabled or pending then setStatus("Pare e aguarde a tentativa antes de atualizar");return end
             local d=lerDados()
             items={}
             if selector and selector.Parent then selector.Parent:Destroy() end
@@ -6395,16 +6426,44 @@ do
             end
             table.sort(items,function(a,b) return a.Name<b.Name end)
             if #items>0 then
-                selection=items[1]
-                selector=Hub.CreateDropdown(section,"Equipamento",items,function(v) selection=v;render() end,false)
+                table.insert(items,1,{Name="Selecione um equipamento"})
+                selector=Hub.CreateDropdown(section,"Equipamento",items,function(v)
+                    if autoEnabled or pending then stop("Seleção alterada; inicie novamente") end
+                    selection=type(v)=="table" and v.location and v or nil
+                    render()
+                end,false)
             end
             render()
         end
         Hub.CreateDropdown(section,"Meta",{"1","2","3","4","5","6","7","8","9"},function(v)
-            target=tonumber(v) or 9
+            if autoEnabled then stop("Meta alterada; inicie novamente") end
+            target=tonumber(v) or 1
             render()
         end,false)
         target=1
+        Hub.CreateDropdown(section,"Limite de tentativas",{"5","10","20"},function(v)
+            if autoEnabled then stop("Limite alterado; inicie novamente") end
+            attemptLimit=tonumber(v) or 5
+            setStatus(status)
+        end,false)
+        Hub.CreateDropdown(section,"Proteção",{ "Obrigatória acima de +0","Sem proteção" },function(v)
+            if autoEnabled then stop("Proteção alterada; inicie novamente") end
+            protect=v~="Sem proteção"
+        end,false)
+        Hub.CreateButton(section,"Iniciar Auto Forge",function()
+            if autoEnabled then return end
+            if uncertain or pending then setStatus("Resultado anterior incerto; confira o inventário e reabra o Hub");return end
+            if not selection then setStatus("Selecione o equipamento primeiro");return end
+            if not eventConnected or not dataModule or type(dataModule.Upgrade)~="function" or type(dataModule.GetUpgradeBlock)~="function" then
+                setStatus("API original da forja indisponível");return
+            end
+            if type(dataModule.ForgeLevel)~="number" then setStatus("Abra a forja original no ferreiro");return end
+            attemptCount=0
+            autoEnabled=true
+            nextAttempt=os.clock()
+            setStatus("Iniciando")
+        end,"play")
+        Hub.CreateButton(section,"Parar Auto Forge",function() stop(pending and "Parado; aguardando resultado enviado" or "Desligado") end,"square")
         Hub.CreateButton(section,"Atualizar equipamentos",refresh,"refresh-cw")
         Hub.CreateButton(section,"Consultar chances e materiais",render,"eye")
         Hub.CreateButton(stats,"Limpar histórico local",function()
@@ -6418,7 +6477,22 @@ do
                 local _,channel=network.Require("RemoteEvent","ForgeSystem")
                 if not channel or not channel.Signal then return nil end
                 return channel.Signal:Connect(function(action,result)
-                    if not running() or not historyText.Parent or action~="UpgradeResult" or type(result)~="table" then return end
+                    if not running() or not historyText.Parent then return end
+                    if action=="Close" then stop("Forja fechada");return end
+                    if action~="UpgradeResult" then return end
+                    if type(result)~="table" then
+                        if pending then pending=nil;stop("Servidor recusou a tentativa") end
+                        return
+                    end
+                    if pending then
+                        if result.Location==pending.location and result.Index==pending.index and result.PreviousLevel==pending.level and type(result.NewLevel)=="number" then
+                            pending.newLevel=result.NewLevel
+                            pending.received=os.clock()
+                            setStatus("Resultado recebido; sincronizando +"..result.NewLevel)
+                        else
+                            stop("Resultado de outro item; confira a forja")
+                        end
+                    end
                     local outcome=result.Result
                     local state
                     if outcome=="Success" then counts.success+=1;state="Sucesso"
@@ -6435,11 +6509,83 @@ do
             end)
             if ok and connection then
                 eventStatus="Monitorando resultados reais da forja"
+                eventConnected=true
                 table.insert(conexoes,connection)
             end
         end
         refreshHistory()
         refresh()
+        setStatus("Desligado")
+        task.spawn(function()
+            while running() and statusLabel.Parent do
+                local ok,err=pcall(function()
+                    if pending then
+                        if pending.received then
+                            local d=lerDados()
+                            local slot=d and d.Tools and d.Tools[pending.location]
+                            local item=slot and slot[pending.index]
+                            if item and item.Name==pending.name and (tonumber(item.Upgrade) or 0)==pending.newLevel and os.clock()-pending.received>=3 then
+                                local newLevel=pending.newLevel
+                                pending=nil
+                                nextAttempt=os.clock()+.5
+                                if autoEnabled then
+                                    if newLevel>=target then stop("Meta alcançada: +"..newLevel)
+                                    else setStatus("Pronto para próxima tentativa") end
+                                else setStatus("Parado; resultado confirmado +"..newLevel) end
+                                render()
+                            elseif os.clock()-pending.received>12 then
+                                pending=nil;uncertain=true;stop("Inventário não sincronizou; confira manualmente")
+                            end
+                        elseif os.clock()-pending.sent>12 then
+                            pending=nil;uncertain=true;stop("Sem resposta do servidor; nenhuma repetição enviada")
+                        end
+                        return
+                    end
+                    if not autoEnabled or os.clock()<nextAttempt then return end
+                    if attemptCount>=attemptLimit then stop("Limite de tentativas atingido");return end
+                    if not selection or not dataModule or type(dataModule.ForgeLevel)~="number" then stop("Abra a forja e selecione o equipamento");return end
+                    if State.AutoFarmQuest or State.AutoFarmFruit or State.AutoBoss or State.AutoSeaBeast or State.AutoRaid or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or State.AutoFishing or FeatureState.islandTraveling then
+                        stop("Desative as outras atividades antes de forjar");return
+                    end
+                    local _,root,hum=character()
+                    if not root or not hum or hum.Health<=0 or emTransicao() then stop("Personagem indisponível");return end
+                    if not fu or type(fu.FindSmith)~="function" or not fu.FindSmith(root.Position) then stop("Fique perto do ferreiro");return end
+                    local d=lerDados()
+                    local slot=d and d.Tools and d.Tools[selection.location]
+                    local item=slot and slot[selection.index]
+                    if not item or item.Name~=selection.name then stop("Equipamento mudou; atualize a lista");return end
+                    local level=tonumber(item.Upgrade) or 0
+                    if level>=target then stop("Meta alcançada: +"..level);return end
+                    local definition=itemInfo(item.Name)
+                    if not definition or definition.Upgradable~=true then stop("Equipamento não melhorável");return end
+                    local step=stepAt(level)
+                    if not step then stop("Nível máximo ou upgrade indisponível");return end
+                    local charm=nil
+                    if protect and level>0 then
+                        for _,name in ipairs({"Untradable Protection Charm","Protection Charm"}) do
+                            local n=count(name)
+                            if n and n>=1 then charm=name;break end
+                        end
+                        if not charm then stop("Sem Protection Charm; evitando perda de nível");return end
+                    end
+                    local gear={Location=selection.location,Index=selection.index,GearId=item.Name,Level=level,Evolution=item.Level or 0,Rolls=item.Rolls}
+                    local blocked=dataModule.GetUpgradeBlock(gear,charm)
+                    if blocked then stop(tostring(blocked));return end
+                    pending={location=gear.Location,index=gear.Index,name=gear.GearId,level=level,sent=os.clock()}
+                    attemptCount+=1
+                    setStatus("Aguardando resultado de +"..level.." para +"..(level+1))
+                    if not dataModule.Upgrade(gear,charm) then
+                        pending=nil;stop("Upgrade bloqueado pela validação original")
+                    end
+                end)
+                if not ok then
+                    if pending then uncertain=true;pending=nil end
+                    stop("Erro: "..tostring(err))
+                    warn("[GR Hub Auto Forge]",err)
+                end
+                task.wait((autoEnabled or pending) and .25 or .75)
+            end
+        end)
     end)
     if not okForge then warn("[GR Hub Forge]",errForge) end
 end
@@ -6546,6 +6692,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.3] Forge Helper carregado")
+print("[GR Hub V13.4] Auto Forge carregado")
 
 end)()
