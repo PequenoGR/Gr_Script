@@ -266,8 +266,16 @@ return function(C)
         return C.posicaoDe(v)
     end
     local npcMissUntil={}
+    local npcHits={}
     local function npcPosition(actor,root)
         if type(actor)~="string" or actor=="" then return nil end
+        local key=norm(actor)
+        local cached=npcHits[key]
+        if cached and cached.untilTime>os.clock() and cached.model.Parent then
+            local p=position(cached.model)
+            if p then return p,cached.model end
+        end
+        npcHits[key]=nil
         local points=interestPoints or (C.mainModulo and C.mainModulo.InterestPoints)
         if points and type(points.Get)=="function" then
             local ok,value=pcall(function() return points:Get("Character_"..actor) end)
@@ -276,7 +284,7 @@ return function(C)
                 if pos then return pos,value end
             end
         end
-        if os.clock()<(npcMissUntil[actor] or 0) then return nil end
+        if os.clock()<(npcMissUntil[key] or 0) then return nil end
         local ignore=workspace:FindFirstChild("IgnoreList")
         local int=ignore and ignore:FindFirstChild("Int")
         local play=workspace:FindFirstChild("Playability")
@@ -286,7 +294,7 @@ return function(C)
                 local folder=scope:FindFirstChild("NPCs") or scope
                 for _,inst in ipairs(folder:GetDescendants()) do
                     if (inst:IsA("Model") or inst:IsA("BasePart")) and
-                        (norm(inst.Name)==norm(actor) or norm(inst:GetAttribute("OriginalName"))==norm(actor)) then
+                        (norm(inst.Name)==key or norm(inst:GetAttribute("OriginalName"))==key or norm(inst:GetAttribute("NPCName"))==key) then
                         local pos=position(inst)
                         if pos then
                             local dist=root and (pos-root.Position).Magnitude or 0
@@ -296,8 +304,11 @@ return function(C)
                 end
             end
         end
-        if not found then npcMissUntil[actor]=os.clock()+2.5
-        else npcMissUntil[actor]=nil end
+        if not found then npcMissUntil[key]=os.clock()+2.5
+        else
+            npcMissUntil[key]=nil
+            npcHits[key]={model=model,untilTime=os.clock()+2}
+        end
         return found,model
     end
     local function converseInfo(id,root,preferredActor)
