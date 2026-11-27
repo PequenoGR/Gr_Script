@@ -10,7 +10,8 @@ return function(C)
     }
     local RS=game:GetService("ReplicatedStorage")
     local START=Vector3.new(-8313.673,-1205.046,12929.421)
-    local FINISH=Vector3.new(-8313.688,-1205.046,14298.82)
+    -- O cliente original só aceita End depois do plano 14319.071 + 8 studs
+    local FINISH=Vector3.new(-8313.988,-1200.667,14332.5)
     local function path(root,names)
         local cur=root
         for _,key in ipairs(names) do
@@ -126,26 +127,34 @@ return function(C)
         local module=path(RS,{"Shared","MainModules","OtherUtils","InterestPoints"})
         if module then interest=require(module) end
     end)
+    local npcCachePosition,npcCacheUntil=nil,-100
     local function npc()
+        local now=os.clock()
+        if now<npcCacheUntil then return npcCachePosition end
+        npcCacheUntil=now+2.5
         if interest and type(interest.Get)=="function" then
-            local ok,v=pcall(function() return interest:Get("Character_Mysterious Monk") end)
-            if ok and pos(v) then return pos(v) end
+            for _,id in ipairs({"Character_Mysterious Monk","Character_MysteriousMonk"}) do
+                local ok,v=pcall(function() return interest:Get(id) end)
+                local p=ok and pos(v)
+                if p then npcCachePosition=p;return p end
+            end
         end
         local ignore=workspace:FindFirstChild("IgnoreList")
         local int=ignore and ignore:FindFirstChild("Int")
         local play=workspace:FindFirstChild("Playability")
-        for _,root in ipairs({int or false,play or false}) do
-            if root then
-                for _,v in ipairs(root:GetDescendants()) do
+        for _,scope in ipairs({int or false,play or false}) do
+            if scope then
+                for _,v in ipairs(scope:GetDescendants()) do
                     if (v:IsA("Model") or v:IsA("BasePart")) and
-                        (v.Name=="Mysterious Monk" or
+                        (v.Name=="Mysterious Monk" or v.Name=="MysteriousMonk" or
                         v:GetAttribute("OriginalName")=="Mysterious Monk") then
                         local p=pos(v)
-                        if p then return p end
+                        if p then npcCachePosition=p;return p end
                     end
                 end
             end
         end
+        npcCachePosition=nil
         return nil
     end
     local function activeQuest(d)
@@ -222,7 +231,7 @@ return function(C)
         if not valid then return end
         local remaining=(root.Position-FINISH).Magnitude
         R.distance=math.floor(remaining)
-        if remaining<=18 then
+        if remaining<=8 then
             R.stage="Final da corrida"
             local active=session()
             if active and R.gameId then
@@ -388,6 +397,7 @@ return function(C)
         R.enabled=value==true
         C.State.AutoRush=R.enabled
         if R.enabled then
+            R.completed=false
             if C.SecondaryQuestAuto and C.SecondaryQuestAuto.enabled then
                 C.SecondaryQuestAuto.setAuto(false)
             end
@@ -422,7 +432,7 @@ return function(C)
                     if R.failures%7==1 then warn("[GR Auto Rush]",err) end
                 end
             end
-            task.wait(R.enabled and .055 or 1.2)
+            task.wait(R.enabled and (R.completed and 1.0 or .075) or 1.2)
         end
         R.stop()
     end)
