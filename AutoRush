@@ -234,7 +234,7 @@ return function(C)
         if remaining<=4 then
             R.stage="Final da corrida"
             local active=session()
-            if active and R.gameId then
+            if active then
                 attempt("TempleRun End",2.5,
                     "MinigamesService","TempleRun",{GameAction="End",id=R.gameId})
             else
