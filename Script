@@ -57,7 +57,7 @@ local runId = (env.GRHubRun or 0) + 1
 env.GRHubRun = runId
 local function running() return env.GRHubRun == runId end
 
-local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, IslandESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
+local State = {AutoBoss=false, AutoFarmQuest=false, AutoFarmFruit=false, FruitESP=false, AutoStoreFruit=false, AutoStats=false, AutoFishing=false, AutoCastFishing=false, AutoHaki=false, AutoSecondary=false, AutoSkyHermit=false, AutoRush=false, AutoForge=false, IslandESP=false, AntiQueda=true, AntiAFK=false, AutoRepeat=true, AbandonarOutra=false}
 local MODOS = {
     {Name="Normal",Velocidade=150,Ataque=0.06},
     {Name="Rápido (Padrão)",Velocidade=250,Ataque=0.04},
@@ -1821,7 +1821,7 @@ local function encontrarVaraPesca()
     return nil
 end
 local function atualizarLancamentoPesca()
-    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or State.AutoRaid or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
+    if not State.AutoFishing or not State.AutoCastFishing or State.AutoSeaBeast or State.AutoRaid or State.AutoForge or os.clock()<(FeatureState.islandUntil or 0) or not running() then return end
     if FeatureState.pescaHUD and FeatureState.pescaHUD.Parent and FeatureState.pescaHUD.Visible then return end
     if os.clock()<FeatureState.bloquearAtePesca or os.clock()-FeatureState.ultimoLancamentoPesca<8 then return end
     local _,root,hum=character()
@@ -5736,7 +5736,13 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.5 - AUTO FORGE COMPLETO",
+        "GR HUB V13.6 - REVISAO DE ESTABILIDADE",
+        "Forge ativo: "..tostring(State.AutoForge),
+        "Forge status: "..tostring(FeatureState.forgeStatus),
+        "Forge tentativas: "..tostring(FeatureState.forgeAttempts).."/"..tostring(FeatureState.forgeLimit),
+        "Forge resultado pendente: "..tostring(FeatureState.forgePending),
+        "Forge chance anterior (%): "..tostring(FeatureState.forgeLastChance),
+        "Forge roll anterior (%): "..tostring(FeatureState.forgeLastRoll),
         "Snapshot de referência: 2026-11-21 / Place 104067066727140",
         "Definições exportadas: 38 Grinding, 64 Secondary, 70 History",
         "Frutas definidas no snapshot: 19 (Forest e Operator indisponíveis)",
@@ -6294,10 +6300,16 @@ do
         local usedIslandFallback=false
         local ownsIslandTrip=false
         local openedOnce=false
+        local npcWaitSince=0
+        local arrivedAt=0
         local statusLabel=label(section,55)
         local function setStatus(value)
-            status=value
-            statusLabel.Text="Auto Forge: "..value.." | "..attemptCount.."/"..attemptLimit
+            status=tostring(value)
+            FeatureState.forgeStatus=status
+            FeatureState.forgeAttempts=attemptCount
+            FeatureState.forgeLimit=attemptLimit
+            FeatureState.forgePending=pending~=nil
+            if statusLabel.Parent then statusLabel.Text="Auto Forge: "..status.." | "..attemptCount.."/"..attemptLimit end
         end
         local function stop(value)
             autoEnabled=false
@@ -6408,7 +6420,7 @@ do
             if not fu or type(fu.FindSmith)~="function" then
                 stop("ForgeUtils indisponível");return false
             end
-            if os.clock()-travelStarted>600 then
+            if not openedOnce and os.clock()-travelStarted>600 then
                 stop("Tempo limite procurando ou abrindo a forja");return false
             end
             if ownsIslandTrip and FeatureState.islandTraveling then
@@ -6416,6 +6428,7 @@ do
             elseif ownsIslandTrip then
                 ownsIslandTrip=false
                 smithScanAt=0
+                arrivedAt=os.clock()
             end
             local smith=fu.FindSmith(root.Position)
             if smith then
@@ -6424,6 +6437,7 @@ do
                     openedOnce=true
                     return true
                 end
+                if openedOnce then stop("Menu original da forja foi fechado");return false end
                 if openRequested>0 then
                     if os.clock()-openRequested>12 then
                         stop("Ferreiro encontrado, mas a forja não abriu")
@@ -6446,8 +6460,11 @@ do
                 local distance=(root.Position-point).Magnitude
                 if distance<=12 then
                     if rota and rota.chave=="ForgeTravel" then liberarVoo() end
+                    if npcWaitSince==0 then npcWaitSince=os.clock() end
+                    if os.clock()-npcWaitSince>25 then stop("NPC não carregou perto de "..found.name);return false end
                     setStatus("Aguardando NPC carregar: "..found.name)
                 else
+                    npcWaitSince=0
                     definirDestino(point+Vector3.new(0,3,0),"ForgeTravel")
                     setStatus("Indo a "..found.name.." ("..math.floor(distance).." studs)")
                 end
@@ -6463,7 +6480,7 @@ do
                     if ownsIslandTrip then setStatus("Procurando ferreiro em "..island);return false end
                 end
             end
-            if os.clock()-travelStarted>35 then stop("Ferreiro não carregado; tente em uma ilha com forja")
+            if os.clock()-math.max(travelStarted,arrivedAt)>35 then stop("Ferreiro não carregado; tente em uma ilha com forja")
             else setStatus("Buscando ferreiros carregados") end
             return false
         end
@@ -6619,6 +6636,8 @@ do
             smithScanAt=0
             usedIslandFallback=false
             ownsIslandTrip=false
+            npcWaitSince=0
+            arrivedAt=0
             nextAttempt=os.clock()
             setStatus("Procurando ferreiro")
         end,"play")
@@ -6648,6 +6667,7 @@ do
                     end
                     if pending then
                         if result.Location==pending.location and result.Index==pending.index and result.PreviousLevel==pending.level and type(result.NewLevel)=="number" then
+                            if pending.received then return end
                             pending.newLevel=result.NewLevel
                             pending.received=os.clock()
                             setStatus("Resultado recebido; sincronizando +"..result.NewLevel)
@@ -6655,13 +6675,16 @@ do
                             stop("Resultado de outro item; confira a forja")
                         end
                     end
+                    if type(result.Chance)=="number" and result.Chance>=0 and result.Chance<=1 then FeatureState.forgeLastChance=result.Chance*100 end
+                    if type(result.Roll)=="number" and result.Roll>=0 and result.Roll<=1 then FeatureState.forgeLastRoll=result.Roll*100 end
                     local outcome=result.Result
                     local state
                     if outcome=="Success" then counts.success+=1;state="Sucesso"
                     elseif outcome=="Protected" then counts.failed+=1;counts.protected+=1;state="Falha protegida"
                     elseif outcome=="Failed" or outcome=="Fail" or (type(result.NewLevel)=="number" and type(result.PreviousLevel)=="number" and result.NewLevel<=result.PreviousLevel) then counts.failed+=1;state="Falha"
                     else return end
-                    table.insert(history,1,state.." | +"..tostring(result.PreviousLevel or "?").." → +"..tostring(result.NewLevel or "?"))
+                    local rollText=type(result.Roll)=="number" and result.Roll>=0 and result.Roll<=1 and string.format(" | Roll %.1f%%",result.Roll*100) or ""
+                    table.insert(history,1,state.." | +"..tostring(result.PreviousLevel or "?").." → +"..tostring(result.NewLevel or "?")..rollText)
                     if #history>25 then table.remove(history) end
                     refreshHistory()
                     task.delay(.8,function()
@@ -6686,7 +6709,7 @@ do
                             local d=lerDados()
                             local slot=d and d.Tools and d.Tools[pending.location]
                             local item=slot and slot[pending.index]
-                            if item and item.Name==pending.name and (tonumber(item.Upgrade) or 0)==pending.newLevel and os.clock()-pending.received>=3 then
+                            if item and item.Name==pending.name and (tonumber(item.Upgrade) or 0)==pending.newLevel and os.clock()-pending.received>=6 then
                                 local newLevel=pending.newLevel
                                 pending=nil
                                 nextAttempt=os.clock()+.5
@@ -6712,7 +6735,6 @@ do
                     local _,root,hum=character()
                     if not root or not hum or hum.Health<=0 then stop("Personagem indisponível");return end
                     if emTransicao() then setStatus("Aguardando transição");return end
-                    if not prepareForge(root) then return end
                     local d=lerDados()
                     local slot=d and d.Tools and d.Tools[selection.location]
                     local item=slot and slot[selection.index]
@@ -6734,6 +6756,7 @@ do
                     local gear={Location=selection.location,Index=selection.index,GearId=item.Name,Level=level,Evolution=item.Level or 0,Rolls=item.Rolls}
                     local blocked=dataModule.GetUpgradeBlock(gear,charm)
                     if blocked then stop(tostring(blocked));return end
+                    if not prepareForge(root) then return end
                     pending={location=gear.Location,index=gear.Index,name=gear.GearId,level=level,sent=os.clock()}
                     attemptCount+=1
                     setStatus("Aguardando resultado de +"..level.." para +"..(level+1))
@@ -6816,14 +6839,20 @@ Hub.CreateToggle(secSea,"Auto Sea Beast (M1 + Skills + Dodge)",
 local secTP=Hub.CreateSection("Ilhas","ILHAS - TELEPORTE")
 Hub.CreateDropdown(secTP,"Selecionar ilha",IslandTeleport.options,IslandTeleport.choose)
 Hub.CreateDropdown(secTP,"Velocidade do teleporte",IslandTeleport.speedChoices,IslandTeleport.setSpeed)
-Hub.CreateButton(secTP,"Viajar para ilha",IslandTeleport.go)
+Hub.CreateButton(secTP,"Viajar para ilha",function()
+    claimMovement("Viagem manual")
+    IslandTeleport.go()
+end)
 Hub.CreateButton(secTP,"Cancelar viagem",IslandTeleport.stop)
 local secESPIlhas=Hub.CreateSection("Ilhas","ESP ILHAS")
 Hub.CreateToggle(secESPIlhas,"ESP Ilhas",IslandESP.setESP,"map-pin","gr_island_esp")
 local secRaid=Hub.CreateSection("Raid","MARINE FORT RAID")
 Hub.CreateToggle(secRaid,"Auto Raid (ondas, boss e baús)",
     movementToggle("Raid",Raid.setAuto),nil,"gr_auto_raid")
-Hub.CreateButton(secRaid,"Teleportar para Raid",Raid.teleport)
+Hub.CreateButton(secRaid,"Teleportar para Raid",function()
+    claimMovement("Viagem manual")
+    Raid.teleport()
+end)
 local pl=Hub.CreateSection("Player","AUTO STATS")
 Hub.CreateDropdown(pl,"Selecionar Stat",FeatureState.STATS_NAMES,escolherStat)
 Hub.CreateToggle(pl,"Auto Stats",mudarAutoStats)
@@ -6856,6 +6885,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.5] Auto Forge completo carregado")
+print("[GR Hub V13.6] Revisão de estabilidade carregada")
 
 end)()
