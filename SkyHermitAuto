@@ -106,12 +106,16 @@ return function(C)
         stopRoute()
         return true
     end
-    local lastNPCScan=-100
+    local lastNPCScan={}
     local cachedNPC={}
     local function npc(name)
-        if os.clock()-lastNPCScan<1.3 and cachedNPC[name] and
-            cachedNPC[name].Parent then return cachedNPC[name] end
-        lastNPCScan=os.clock()
+        local now=os.clock()
+        local cached=cachedNPC[name]
+        if now-(lastNPCScan[name] or -100)<2.2 then
+            if cached and cached.Parent then return cached end
+            return nil
+        end
+        lastNPCScan[name]=now
         local sources={}
         local ignore=workspace:FindFirstChild("IgnoreList")
         local inside=ignore and ignore:FindFirstChild("Int")
@@ -134,7 +138,7 @@ return function(C)
                 end
             end
         end
-        if best then cachedNPC[name]=best end
+        cachedNPC[name]=best
         return best
     end
     local function interestPoint(name)
