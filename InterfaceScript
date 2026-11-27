@@ -412,25 +412,24 @@ function API.CreateToggle(parent,label,callback,icon,configId)
     local b=text("TextButton",bg,"",{Size=UDim2.fromScale(1,1),ZIndex=3})
     local active=false
     local circleTween
+    local changeVersion=0
     local function setActive(value,notify,restored)
         if type(value)~="boolean" then return end
+        changeVersion+=1
+        local thisChange=changeVersion
         active=value
         if circleTween then circleTween:Cancel() end
         tween(bg,.2,{BackgroundColor3=active and "yellow" or "muted"})
         circleTween=tween(circle,.2,{Position=active and UDim2.new(1,-7,.5,0) or UDim2.new(0,7,.5,0)})
         if notify then
-            if restored then
-                restoreCallback(row,callback,active)
-            else
-                changeConfig()
-                if callback then
-                    local state=active
-                    task.defer(function()
-                        if not row.Parent then return end
-                        local ok,err=pcall(callback,state)
-                        if not ok then warn("[GRHub] Toggle callback: "..tostring(err)) end
-                    end)
-                end
+            changeConfig()
+            if callback then
+                local state=active
+                task.defer(function()
+                    if not row.Parent or changeVersion~=thisChange or active~=state then return end
+                    local ok,err=pcall(callback,state)
+                    if not ok then warn("[GRHub] Toggle callback: "..tostring(err)) end
+                end)
             end
         end
     end
@@ -438,28 +437,86 @@ function API.CreateToggle(parent,label,callback,icon,configId)
     if configId~=false then registerConfig(configKey(parent,"toggle",label,configId),row,function() return active end,function(v,notify) setActive(v,notify,true) end) end
     scheduleSearch(); return b
 end
+function API.SetToggleState(configId,value,runCallback)
+    if type(configId)~="string" or type(value)~="boolean" then return false end
+    local entry=configControls["id:"..configId]
+    if not entry or not entry.owner or not entry.owner.Parent then return false end
+    local previous=entry.get()
+    if previous==value then return true end
+    local ok,err=pcall(entry.set,value,runCallback==true)
+    if not ok then
+        warn("[GRHub] Falha ao sincronizar toggle: "..tostring(err))
+        return false
+    end
+    changeConfig()
+    return true
+end
 function API.CreateDropdown(parent,label,list,callback,configId)
-    local function name(v) if type(v)=="table" then return tostring(v.Name or v.Value or "") end; return tostring(v) end
-    local h=create("Frame",parent,{Size=UDim2.new(.92,0,0,26),BackgroundColor3="surface",ClipsDescendants=true,BorderSizePixel=0}); round(h,4); layout(h,2); h:SetAttribute("GRSearchText",label)
-    local topRow=text("TextButton",h,"  "..label.." : "..(list[1] and name(list[1]) or ""),{Size=UDim2.new(1,0,0,26),TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0})
-    local arrow=img(topRow,"chevron-down",{Size=UDim2.fromOffset(14,14),Position=UDim2.new(1,-20,.5,-7),ImageColor3="gray"})
+    list=type(list)=="table" and list or {}
+    local function name(v)
+        if type(v)=="table" then return tostring(v.Name or v.Value or v.Valor or "") end
+        return tostring(v)
+    end
+    local h=create("Frame",parent,{Size=UDim2.new(.92,0,0,26),BackgroundColor3="surface",ClipsDescendants=true,BorderSizePixel=0})
+    round(h,4)
+    layout(h,2)
+    h:SetAttribute("GRSearchText",label)
+    local topRow=text("TextButton",h,"  "..label.." : "..(list[1] and name(list[1]) or ""),
+        {Size=UDim2.new(1,0,0,26),TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0,TextTruncate=Enum.TextTruncate.AtEnd})
+    local arrow=img(topRow,"chevron-down",
+        {Size=UDim2.fromOffset(14,14),Position=UDim2.new(1,-20,.5,-7),ImageColor3="gray"})
+    local options=create("ScrollingFrame",h,{
+        Name="GRDropdownOptions",Size=UDim2.new(1,0,0,0),
+        CanvasSize=UDim2.fromOffset(0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        ScrollingDirection=Enum.ScrollingDirection.Y,ScrollBarThickness=3,
+        ScrollBarImageColor3="gray",BackgroundTransparency=1,
+        BorderSizePixel=0,LayoutOrder=1,Visible=false
+    })
+    layout(options,2)
     local opened=false
-    local function setOpen(v) opened=v; tween(h,.25,{Size=UDim2.new(.92,0,0,v and 26+#list*24 or 26)}); tween(arrow,.2,{Rotation=v and 180 or 0}) end
+    local function setOpen(v)
+        opened=v==true
+        local height=opened and math.min(#list*26+4,218) or 0
+        options.Visible=opened
+        options.Size=UDim2.new(1,0,0,height)
+        tween(h,.2,{Size=UDim2.new(.92,0,0,26+height)})
+        tween(arrow,.18,{Rotation=opened and 180 or 0})
+    end
     topRow.Activated:Connect(function() setOpen(not opened) end)
     local selectedIndex=#list>0 and 1 or nil
     local function selectIndex(i,notify,restored)
-        local v=list[i]; if v==nil then return end
-        selectedIndex=i; topRow.Text="  "..label.." : "..name(v); setOpen(false)
+        local v=list[i]
+        if v==nil then return end
+        selectedIndex=i
+        topRow.Text="  "..label.." : "..name(v)
+        setOpen(false)
         if notify then
-            if restored then restoreCallback(h,callback,v) else changeConfig(); if callback then callback(v) end end
+            changeConfig()
+            if restored then restoreCallback(h,callback,v)
+            elseif callback then callback(v) end
         end
     end
     for i,v in ipairs(list) do
-        local opt=text("TextButton",h,name(v),{Size=UDim2.new(.95,0,0,22),BackgroundTransparency=0,BackgroundColor3="muted",TextSize=11,LayoutOrder=i}); round(opt,4)
+        local opt=text("TextButton",options,name(v),{
+            Size=UDim2.new(1,-6,0,24),
+            BackgroundTransparency=0,BackgroundColor3="muted",
+            TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,
+            TextTruncate=Enum.TextTruncate.AtEnd,LayoutOrder=i})
+        round(opt,4)
         opt.Activated:Connect(function() selectIndex(i,true,false) end)
     end
-    if configId~=false then registerConfig(configKey(parent,"dropdown",label,configId),h,function() return selectedIndex and name(list[selectedIndex]) or "" end,function(v,notify) if type(v)=="string" then for i,item in ipairs(list) do if name(item)==v then selectIndex(i,notify,true); break end end end end) end
-    scheduleSearch(); return topRow
+    if configId~=false then
+        registerConfig(configKey(parent,"dropdown",label,configId),h,
+            function() return selectedIndex and name(list[selectedIndex]) or "" end,
+            function(v,notify)
+                if type(v)~="string" then return end
+                for i,item in ipairs(list) do
+                    if name(item)==v then selectIndex(i,notify,true);break end
+                end
+            end)
+    end
+    scheduleSearch()
+    return topRow
 end
 function API.CreateMultiDropdown(parent,label,list,callback,defaults,configId)
     list=list or {}
@@ -470,7 +527,13 @@ function API.CreateMultiDropdown(parent,label,list,callback,defaults,configId)
     local header=text("TextButton",h,"",{Size=UDim2.new(1,0,0,34),LayoutOrder=0,AutoButtonColor=false})
     local caption=text("TextLabel",header,"",{Size=UDim2.new(1,-34,1,0),Position=UDim2.fromOffset(9,0),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
     local arrow=text("TextLabel",header,"▼",{Size=UDim2.fromOffset(20,20),Position=UDim2.new(1,-25,.5,-10),TextSize=11,TextColor3="gray"})
-    local body=create("Frame",h,{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=1,Visible=false})
+    local body=create("ScrollingFrame",h,{
+        Name="GRMultiOptions",Size=UDim2.new(1,0,0,0),
+        CanvasSize=UDim2.fromOffset(0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        ScrollingDirection=Enum.ScrollingDirection.Y,
+        ScrollBarThickness=3,ScrollBarImageColor3="gray",
+        BackgroundTransparency=1,BorderSizePixel=0,
+        LayoutOrder=1,Visible=false})
     local bodyLayout=layout(body,4)
     padding(body,6,0,6)
     local selected,rows={},{}
@@ -501,9 +564,10 @@ function API.CreateMultiDropdown(parent,label,list,callback,defaults,configId)
     end
     local function resize()
         if resizeTween then resizeTween:Cancel() end
-        local target=34
-        if opened then target=34+3+bodyLayout.AbsoluteContentSize.Y+6 end
-        resizeTween=tween(h,.18,{Size=UDim2.new(.92,0,0,target)})
+        local content=math.max(0,bodyLayout.AbsoluteContentSize.Y+10)
+        local height=opened and math.min(content,225) or 0
+        body.Size=UDim2.new(1,0,0,height)
+        resizeTween=tween(h,.18,{Size=UDim2.new(.92,0,0,34+height)})
     end
     local function setOpen(state)
         opened=state==true
