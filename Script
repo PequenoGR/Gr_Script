@@ -5737,7 +5737,7 @@ local function copiarDebug()
     local atual=questAtiva(d)
     local wanted=questPorNivel(lerNivel(d))
     local t={
-        "GR HUB V13.7 - AUTO MATERIALS",
+        "GR HUB V13.8 - MATERIAL SOURCES",
         "Materials ativo: "..tostring(State.AutoMaterials),
         "Materials status: "..tostring(FeatureState.materialsStatus),
         "Materials alvo: "..tostring(FeatureState.materialsTarget),
@@ -6843,9 +6843,18 @@ do
         local enemyFolder=main and main:FindFirstChild("EnemysUtils")
         local ti=loadModule(toolFolder,"ToolsInfo")
         local bestiary=loadModule(enemyFolder,"BestiaryUtils")
+        local tu=loadModule(toolFolder,"ToolsUtils")
+        local quests=mainModulo and mainModulo.QuestsInfo
+        local roomOnly={}
+        local directCount=0
+        local nextScan=0
         local function quantity(name,d)
             local inventory=d and d.Tools and d.Tools.Unequiped
             if type(inventory)~="table" then return nil end
+            if tu and type(tu.GetInventoryAmount)=="function" then
+                local ok,n=pcall(tu.GetInventoryAmount,nil,name)
+                if ok and type(n)=="number" then return n end
+            end
             local count=0
             for _,item in pairs(inventory) do
                 if type(item)=="table" and item.Name==name then count+=tonumber(item.Quantity) or 1 end
@@ -6853,7 +6862,8 @@ do
             return count
         end
         local function catalog()
-            table.clear(info);table.clear(allNames);table.clear(sources);table.clear(choices)
+            table.clear(info);table.clear(allNames);table.clear(sources);table.clear(choices);table.clear(roomOnly)
+            directCount=0
             if ti and type(ti.Infos)=="table" then
                 for name,definition in pairs(ti.Infos) do
                     if type(name)=="string" and type(definition)=="table" and definition.ToolType=="Item"
@@ -6874,7 +6884,13 @@ do
                             for name,drop in pairs(drops) do
                                 if info[name] and type(drop)=="table" then
                                     local ch=tonumber(tostring(drop.Chance or ""):match("[%d%.]+")) or 0
-                                    table.insert(sources[name],{entry=entry,enemy=entry.EnemyName,category=entry.Category,island=entry.Island,level=tonumber(entry.Level) or 0,chance=ch})
+                                    local minLevel=tonumber(entry.Level) or 0
+                                    if entry.Category=="Wanted" then
+                                        local quest=quests and quests[entry.EnemyName]
+                                        if type(quest)=="table" and type(quest.MinLevel)=="number" then minLevel=quest.MinLevel
+                                        elseif name=="Forge Ember" and tostring(entry.EnemyName):sub(1,7)=="Wanted " then minLevel=325 end
+                                    end
+                                    table.insert(sources[name],{entry=entry,enemy=entry.EnemyName,display=entry.DisplayName,category=entry.Category,island=entry.Island,level=minLevel,chance=ch,quantity=drop.Quantity})
                                 end
                             end
                         end
@@ -6886,7 +6902,13 @@ do
                 for _,source in ipairs(sources[name]) do
                     if source.category=="Grinding" or source.category=="Wanted" then direct=true;break end
                 end
-                if direct then table.insert(choices,name) end
+                if direct then directCount+=1 end
+                if not direct then
+                    for _,source in ipairs(sources[name]) do
+                        if source.category=="BossRoom" then roomOnly[name]=true;break end
+                    end
+                end
+                table.insert(choices,name)
             end
         end
         local function showCatalog()
@@ -6895,8 +6917,9 @@ do
             for _,name in ipairs(allNames) do
                 local sourceLines={}
                 for _,source in ipairs(sources[name]) do
-                    if #sourceLines>=4 then break end
-                    table.insert(sourceLines,tostring(source.enemy).." ["..tostring(source.category).."] "..source.chance.."%")
+                    local difficulty=source.entry and source.entry.Difficulty
+                    local suffix=type(difficulty)=="table" and " / "..tostring(difficulty.Name) or ""
+                    table.insert(sourceLines,tostring(source.display or source.enemy).." ["..tostring(source.category)..suffix.."] "..source.chance.."% | nível "..source.level)
                 end
                 local recipe=info[name].Recipe
                 if #sourceLines==0 and type(recipe)=="table" then
@@ -6937,15 +6960,17 @@ do
                 materialPicker=b and b.Parent
                 selected={choices[1]}
             end
-            progressSummary=string.format("Catálogo: %d | Drops diretos: %d\nSelecione os materiais ou Todos.",#allNames,#choices)
+            progressSummary=string.format("Catálogo: %d | Drops diretos: %d\nFontes especiais serão indicadas no status.",#allNames,directCount)
             status(#choices>0 and "Desligado" or "Bestiário ainda não carregado; atualize a lista")
         end
-        local function exactEnemy(model,name)
+        local function exactEnemy(model,name,display)
             if not model or not model:IsA("Model") or not model.Parent or Players:GetPlayerFromCharacter(model) then return false end
             if model.Name:lower():find("history",1,true) then return false end
             local wanted=normalizar(name)
-            for _,value in pairs({model.Name,model:GetAttribute("OriginalName"),model:GetAttribute("EnemyName"),model:GetAttribute("AlternativeName"),model:GetAttribute("DisplayName")}) do
-                if normalizar(tostring(value):gsub("[_%- ]?%d+$",""))==wanted then return true end
+            local alias=normalizar(display)
+            for _,value in pairs({model.Name,model:GetAttribute("OriginalName"),model:GetAttribute("EnemyName"),model:GetAttribute("AlternativeName"),model:GetAttribute("DisplayName"),model:GetAttribute("BossName"),model:GetAttribute("MobName"),model:GetAttribute("EntityName")}) do
+                local key=normalizar(tostring(value):gsub("[_%- ]?%d+$",""))
+                if key==wanted or (alias~="" and key==alias) then return true end
             end
             return false
         end
@@ -6953,7 +6978,7 @@ do
             reindexar()
             local best,dist=nil,math.huge
             for _,model in ipairs(indexInimigos) do
-                if exactEnemy(model,source.enemy) and valido(model) then
+                if exactEnemy(model,source.enemy,source.display) and valido(model) then
                     local er=rootInimigo(model)
                     if er and er:IsA("BasePart") then
                         local d=(root.Position-er.Position).Magnitude
@@ -6968,6 +6993,8 @@ do
             local localName=normalizar(localAtual())
             local completed=0
             local waiting={}
+            local special={}
+            local waitingWanted=false
             local bestName,bestSource,bestScore=nil,nil,-math.huge
             for _,name in ipairs(selected) do
                 local n=quantity(name,d)
@@ -6977,6 +7004,7 @@ do
                     for _,source in ipairs(sources[name] or {}) do
                         if source.level<=level and type(source.enemy)=="string" and (source.category=="Grinding" or source.category=="Wanted") then
                             local enemy=findTarget(source,root)
+                            if source.category=="Wanted" and not enemy then waitingWanted=true end
                             if source.category=="Grinding" or enemy then
                                 viable=true
                                 local score=source.chance+(enemy and 35 or 0)+(normalizar(source.island)==localName and 20 or 0)
@@ -6988,7 +7016,10 @@ do
                             end
                         end
                     end
-                    if not viable then table.insert(waiting,name) end
+                    if not viable then
+                        table.insert(waiting,name)
+                        if name=="Forge Ember" or roomOnly[name] then table.insert(special,name.." (Boss Room)") end
+                    end
                 end
             end
             progressSummary=string.format("Metas: %d/%d | Sem fonte disponível: %d",completed,#selected,#waiting)
@@ -6999,7 +7030,16 @@ do
                 nextChoose=os.clock()+2
                 return true
             end
-            stop(completed==#selected and "Todas as metas selecionadas atingidas" or "Sem fonte disponível ou nível insuficiente")
+            if completed==#selected then stop("Todas as metas selecionadas atingidas");return false end
+            if #special>0 then
+                progressSummary=progressSummary.."\n"..table.concat(special,", ").." — salas a partir do nível 100"
+            end
+            if waitingWanted then
+                nextScan=os.clock()+3
+                status("Aguardando Wanted disponível; Boss Rooms requerem entrada manual")
+                return false
+            end
+            stop(#special>0 and "Material requer Boss Room; abra a sala pelo Room Keeper" or "Sem fonte direta disponível; consulte o catálogo")
             return false
         end
         local function tick()
@@ -7013,6 +7053,7 @@ do
             local d=lerDados()
             if not d or type(d.Tools)~="table" then status("Aguardando inventário");return end
             if not currentName then
+                if os.clock()<nextScan then return end
                 if not choose(d,root) then return end
             end
             local n=quantity(currentName,d)
@@ -7026,7 +7067,7 @@ do
                 return
             end
             progressSummary=currentName..": "..n.."/"..targetAmount.." | "..tostring(currentSource.enemy).." | "..tostring(currentSource.chance).."%"
-            if not currentEnemy or not exactEnemy(currentEnemy,currentSource.enemy) or not valido(currentEnemy) then
+            if not currentEnemy or not exactEnemy(currentEnemy,currentSource.enemy,currentSource.display) or not valido(currentEnemy) then
                 currentEnemy=nil
                 if os.clock()-lastScan>=.5 then lastScan=os.clock();currentEnemy=findTarget(currentSource,root) end
             end
@@ -7057,7 +7098,8 @@ do
                 end
             else
                 resetTarget()
-                status("Boss não carregado; procurando outra fonte")
+                nextScan=os.clock()+3
+                status("Boss não carregado; aguardando respawn ou outra fonte")
             end
         end
         Hub.CreateDropdown(section,"Quantidade por material",{"10","25","50","99"},function(v)
@@ -7075,6 +7117,7 @@ do
             enabled=true
             State.AutoMaterials=true
             started=os.clock()
+            nextScan=0
             table.clear(skipped)
             resetTarget()
             status("Iniciando farm de materiais")
@@ -7205,6 +7248,6 @@ local debug=Hub.CreateSection("Config","DIAGNÓSTICO")
 Hub.CreateButton(debug,"Copiar Debug",copiarDebug)
 antiQueda(true)
 State.AutoRepeat=true
-print("[GR Hub V13.7] Auto Materials carregado")
+print("[GR Hub V13.8] Revisão de materiais carregada")
 
 end)()
