@@ -231,7 +231,7 @@ return function(C)
         if not valid then return end
         local remaining=(root.Position-FINISH).Magnitude
         R.distance=math.floor(remaining)
-        if remaining<=8 then
+        if remaining<=4 then
             R.stage="Final da corrida"
             local active=session()
             if active and R.gameId then
