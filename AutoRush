@@ -189,7 +189,18 @@ return function(C)
             miniManager=lib and lib.IsClient
         end
     end)
+    local lastMiniRequire=-100
     local function session()
+        if not miniManager and os.clock()-lastMiniRequire>=5 then
+            lastMiniRequire=os.clock()
+            pcall(function()
+                local module=path(RS,{"Modules","Addons","MinigamesSystem"})
+                if module then
+                    local lib=require(module)
+                    miniManager=lib and lib.IsClient
+                end
+            end)
+        end
         local active=miniManager and miniManager.Active
         if active and active.Name=="TempleRun" then
             R.runActive=true
