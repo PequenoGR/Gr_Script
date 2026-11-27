@@ -143,6 +143,12 @@ local FeatureState = {
     bloquearAtePesca = 0,
     statusPesca = "Desligado",
     lastFishY = nil,
+    performanceFPS = nil,
+    performanceFrameMS = nil,
+    movementOwner = "Nenhum",
+    movementConflicts = 0,
+    performanceLastReport = 0,
+    performanceFiltered = 0,
 }
 for _, nome in ipairs(FRUIT_NAMES) do FeatureState.frutasSelecionadas[nome]=true end
 local modo, alturaInimigo, alturaVoo = MODOS[2], 6, 90
@@ -252,6 +258,8 @@ local function questPorNivel(level)
     for _,c in ipairs(CAMPANHAS) do
         if level>=c.minLevel and level<c.maxLevel then return c end
     end
+    local last=CAMPANHAS[#CAMPANHAS]
+    if last and level>=last.maxLevel then return last end
     return nil
 end
 local function lerLabels()
@@ -1904,7 +1912,16 @@ connect(player.CharacterAdded,function(char)
     if running() then configurarHum(hum) end
 end)
 local ultimoErroFly=0
+local performanceAverage=1/60
 connect(RunService.Heartbeat,function(dt)
+    if type(dt)=="number" and dt>0 and dt<1 then
+        performanceAverage=performanceAverage*.93+dt*.07
+        if os.clock()-(FeatureState.performanceLastReport or 0)>=.7 then
+            FeatureState.performanceLastReport=os.clock()
+            FeatureState.performanceFPS=math.floor(1/math.max(performanceAverage,.001)+.5)
+            FeatureState.performanceFrameMS=math.floor(performanceAverage*1000+.5)
+        end
+    end
     if (State.AutoFarmQuest or State.AutoFarmFruit or State.AutoSeaBeast or State.AutoRaid or State.AutoBoss or State.AutoHaki or State.AutoSecondary or State.AutoSkyHermit or State.AutoRush or FeatureState.islandTraveling) and running() then
         local ok,err=pcall(atualizarVoo,dt)
         if not ok then
@@ -5647,8 +5664,13 @@ local AutoRush={enabled=false,status="Inicializando",stage="-",requests=0,failur
 function AutoRush.setAuto(_) warn("[GR Auto Rush] Módulo indisponível") end
 local okRush,errRush=pcall(function()
     local url="https://raw.githubusercontent.com/PequenoGR/Gr_Script/refs/heads/main/AutoRush"
-    local code=game:HttpGet(url.."?v=13.0&t="..tostring(os.time()),true)
-    if type(code)~="string" or code=="" then code=game:HttpGet(url,true) end
+    local okGet,code=pcall(function()
+        return game:HttpGet(url.."?v=13.0&t="..tostring(os.time()),true)
+    end)
+    if not okGet or type(code)~="string" or code=="" then
+        code=game:HttpGet(url,true)
+    end
+    if type(code)~="string" or code=="" then error("AutoRush vazio") end
     local factory=assert(loadstring(code))
     AutoRush=factory()({
         player=player,
@@ -5690,6 +5712,10 @@ local function copiarDebug()
     local wanted=questPorNivel(lerNivel(d))
     local t={
         "GR HUB V13.0 - REVISAO GERAL",
+        "FPS aproximado: "..tostring(FeatureState.performanceFPS),
+        "Tempo médio por frame (ms): "..tostring(FeatureState.performanceFrameMS),
+        "Motor de movimento ativo: "..tostring(FeatureState.movementOwner),
+        "Conflitos de movimento resolvidos: "..tostring(FeatureState.movementConflicts),
         "Auto Boss: "..tostring(State.AutoBoss),
         "Boss selecionado: "..tostring(BossFarm.chosen),
         "Boss encontrados: "..tostring(BossFarm.found),
@@ -6109,6 +6135,7 @@ local movementSwitches={
 local movementConflicts=0
 local function claimMovement(name)
     movementOwner=name
+    FeatureState.movementOwner=name
     for _,spec in ipairs(movementSwitches) do
         if spec.name~=name then
             local ok,active=pcall(spec.active)
@@ -6116,6 +6143,7 @@ local function claimMovement(name)
                 local stopped,err=pcall(spec.stop)
                 if stopped then
                     movementConflicts+=1
+                    FeatureState.movementConflicts=movementConflicts
                     if type(Hub.SetToggleState)=="function" then
                         Hub.SetToggleState(spec.id,false,false)
                     end
@@ -6136,6 +6164,7 @@ local function movementToggle(name,setter)
             claimMovement(name)
         elseif movementOwner==name then
             movementOwner="Nenhum"
+            FeatureState.movementOwner="Nenhum"
         end
         setter(enabled==true)
     end
