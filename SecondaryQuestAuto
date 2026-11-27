@@ -1043,6 +1043,33 @@ return function(C)
             R.status=R.phantomStatus
             return true
         end
+        local activeId=templeActiveId()
+        R.phantomActiveId=activeId
+        if not activeId then
+            local folder=phantomQuestParts()
+            local marker=folder and folder:FindFirstChild("ActivateMinigamePart")
+            if not marker or not marker:IsA("BasePart") then
+                R.phantomStatus="Ativador TempleRun ainda não carregado"
+                R.status=R.phantomStatus
+                return true
+            end
+            local point=Vector3.new(marker.Position.X,start.Y+3.2,marker.Position.Z+4.5)
+            if not moveTo(point,6,"TempleRun: indo ativar corrida") then
+                R.phantomStage="Ativar TempleRun"
+                R.phantomStatus="Aproximando do ativador do minigame"
+                return true
+            end
+            R.phantomStage="Ativar TempleRun"
+            R.phantomAction="Activate"
+            once("SQTempleRunActivate",2.8,function()
+                R.phantomAttempts+=1
+                if server("MinigamesService","TempleRun",{GameAction="Activate"}) then
+                    R.phantomStatus="TempleRun Activate solicitado; aguardando sessão"
+                    R.status=R.phantomStatus
+                end
+            end)
+            return true
+        end
         if remaining<=4 then
             R.phantomStatus="Fim válido do corredor; aguardando TempleRun End"
             R.status=R.phantomStatus
