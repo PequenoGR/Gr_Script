@@ -772,7 +772,14 @@ function API.Minimize()
     ball.Visible=true; main.Visible=false
 end
 function API.Restore() if ball then ball.Visible=false end; main.Visible=true end
-function API.Destroy() gui:Destroy() end
+function API.Destroy()
+    local stop=env.GRHubStop
+    if type(stop)=="function" then
+        local ok,err=pcall(stop)
+        if not ok then warn("[GRHub] Erro ao desligar o hub: "..tostring(err)) end
+    end
+    gui:Destroy()
+end
 local function packUDim(value)
     return {value.X.Scale,value.X.Offset,value.Y.Scale,value.Y.Offset}
 end
