@@ -126,10 +126,12 @@ return function(C)
         local _,root=char()
         local bestDist=math.huge
         for _,source in ipairs(sources) do
-            for _,obj in ipairs(source:GetDescendants()) do
+            local folder=source:FindFirstChild("NPCs") or source
+            for _,obj in ipairs(folder:GetDescendants()) do
                 if obj:IsA("Model") and
                     (norm(obj.Name)==norm(name) or
-                    norm(obj:GetAttribute("NPCName"))==norm(name)) then
+                    norm(obj:GetAttribute("NPCName"))==norm(name) or
+                    norm(obj:GetAttribute("OriginalName"))==norm(name)) then
                     local point=C.posicaoDe(obj)
                     if point then
                         local distance=root and (root.Position-point).Magnitude or 0
